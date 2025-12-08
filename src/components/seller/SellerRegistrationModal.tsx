@@ -181,26 +181,17 @@ export default function SellerRegistrationModal({ isOpen, onClose, initialPlan }
             )}
 
             <div className="pt-4 border-t border-gray-100">
-                <h4 className="text-sm font-medium text-gray-900 mb-3">Billing Information</h4>
-                <div className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg mb-3">
-                    <CreditCard className="w-5 h-5 text-gray-400" />
-                    <input
-                        type="text"
-                        placeholder="Card Number"
-                        className="flex-1 bg-transparent text-sm focus:outline-none"
-                    />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                    <input
-                        type="text"
-                        placeholder="MM/YY"
-                        className="p-3 border border-gray-200 rounded-lg text-sm focus:outline-none"
-                    />
-                    <input
-                        type="text"
-                        placeholder="CVC"
-                        className="p-3 border border-gray-200 rounded-lg text-sm focus:outline-none"
-                    />
+                <h4 className="text-sm font-medium text-gray-900 mb-3">Payment Method</h4>
+                <div className="border border-blue-100 bg-blue-50/50 rounded-xl p-6 flex flex-col items-center text-center gap-3">
+                    <p className="font-bold text-3xl tracking-tighter text-blue-600">xendit</p>
+                    <p className="text-sm text-gray-600 max-w-xs">
+                        Securely pay via GCash, GrabPay, Maya, or Credit/Debit Card.
+                    </p>
+                    <div className="flex items-center gap-2 mt-2">
+                        <span className="text-xs font-medium text-blue-700 bg-blue-100 px-3 py-1 rounded-full">
+                            Redirects to Secure Checkout
+                        </span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -214,7 +205,7 @@ export default function SellerRegistrationModal({ isOpen, onClose, initialPlan }
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50">
                     <div>
-                        <h2 className="text-xl font-bold text-gray-900">Create a Store</h2>
+                        <h2 className="text-xl font-bold text-gray-900">{initialPlan ? 'Subscribe Now' : 'Create a Store'}</h2>
                         <p className="text-xs text-gray-500">Step {step} of 3</p>
                     </div>
                     <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-full transition-colors">

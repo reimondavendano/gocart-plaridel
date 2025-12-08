@@ -149,7 +149,6 @@ CREATE TABLE products (
     tags TEXT[],
     is_featured BOOLEAN DEFAULT false,
     is_new BOOLEAN DEFAULT false,
-    ai_generated BOOLEAN DEFAULT false,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
