@@ -66,9 +66,7 @@ export default function Header() {
                             <div className="hidden sm:block">
                                 <span className="font-bold text-xl gradient-text">GoCart</span>
 
-                                {isPlus && (
-                                    <span className="ml-1 badge-plus text-[10px]">Plaridel</span>
-                                )}
+                                <span className="ml-1 badge-plus text-[10px]">Plaridel</span>
                             </div>
                         </Link>
 
