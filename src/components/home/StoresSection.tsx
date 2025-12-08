@@ -1,11 +1,27 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { Star, ArrowRight, Store, ShoppingBag } from 'lucide-react';
 import { mockStores } from '@/data/mockup';
+import { useAppSelector } from '@/store';
+import AuthModal from '@/components/auth/AuthModal';
+import SellerRegistrationModal from '@/components/seller/SellerRegistrationModal';
 
 export default function StoresSection() {
+    const { isAuthenticated } = useAppSelector((state) => state.user);
+    const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+    const [isSellerModalOpen, setIsSellerModalOpen] = useState(false);
+
     const approvedStores = mockStores.filter(s => s.status === 'approved');
+
+    const handleCreateStore = () => {
+        if (isAuthenticated) {
+            setIsSellerModalOpen(true);
+        } else {
+            setIsAuthModalOpen(true);
+        }
+    };
 
     return (
         <section className="py-20 bg-gradient-to-b from-cloud-100 to-cloud-200">
@@ -78,15 +94,24 @@ export default function StoresSection() {
 
                 {/* CTA */}
                 <div className="text-center mt-12">
-                    <Link
-                        href="/seller/register"
+                    <button
+                        onClick={handleCreateStore}
                         className="inline-flex items-center gap-2 px-8 py-4 rounded-xl border-2 border-mocha-400 text-mocha-700 font-semibold hover:bg-mocha-50 transition-colors"
                     >
                         <Store className="w-5 h-5" />
-                        Become a Seller
-                    </Link>
+                        Create a Store
+                    </button>
                 </div>
             </div>
+
+            <AuthModal
+                isOpen={isAuthModalOpen}
+                onClose={() => setIsAuthModalOpen(false)}
+            />
+            <SellerRegistrationModal
+                isOpen={isSellerModalOpen}
+                onClose={() => setIsSellerModalOpen(false)}
+            />
         </section>
     );
 }

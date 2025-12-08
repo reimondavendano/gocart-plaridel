@@ -12,6 +12,7 @@ import { setCartOpen, setSearchOpen, setMobileMenuOpen } from '@/store/slices/ui
 import { mockUsers } from '@/data/mockup';
 import { setUser, logout } from '@/store/slices/userSlice';
 import AuthModal from '@/components/auth/AuthModal';
+import SellerRegistrationModal from '@/components/seller/SellerRegistrationModal';
 
 const navLinks = [
     { href: '/', label: 'Home' },
@@ -29,6 +30,7 @@ export default function Header() {
     const [scrolled, setScrolled] = useState(false);
     const [userMenuOpen, setUserMenuOpen] = useState(false);
     const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+    const [isSellerModalOpen, setIsSellerModalOpen] = useState(false);
 
     useEffect(() => {
         const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -65,7 +67,6 @@ export default function Header() {
                             </div>
                             <div className="hidden sm:block">
                                 <span className="font-bold text-xl gradient-text">GoCart</span>
-
                                 <span className="ml-1 badge-plus text-[10px]">Plaridel</span>
                             </div>
                         </Link>
@@ -123,7 +124,7 @@ export default function Header() {
                                         className="flex items-center gap-2 p-1 pr-3 rounded-xl hover:bg-mocha-100 transition-colors"
                                     >
                                         <img
-                                            src={currentUser?.avatar}
+                                            src={currentUser?.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=fallback'}
                                             alt={currentUser?.name}
                                             className="w-8 h-8 rounded-lg object-cover"
                                         />
@@ -150,12 +151,26 @@ export default function Header() {
                                                         <Package className="w-4 h-4" />
                                                         <span>My Orders</span>
                                                     </Link>
-                                                    {currentUser?.role === 'seller' && (
+
+                                                    {/* Dynamic Role-Based Link */}
+                                                    {currentUser?.role === 'seller' ? (
                                                         <Link href="/seller" className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-mocha-100 text-mocha-700">
                                                             <Store className="w-4 h-4" />
-                                                            <span>Go to Portal</span>
+                                                            <span>Seller Portal</span>
                                                         </Link>
+                                                    ) : (
+                                                        <button
+                                                            onClick={() => {
+                                                                setUserMenuOpen(false);
+                                                                setIsSellerModalOpen(true);
+                                                            }}
+                                                            className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-mocha-100 text-mocha-700 w-full text-left"
+                                                        >
+                                                            <Store className="w-4 h-4" />
+                                                            <span>Become a Seller</span>
+                                                        </button>
                                                     )}
+
                                                     {currentUser?.role === 'admin' && (
                                                         <Link href="/admin" className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-mocha-100 text-mocha-700">
                                                             <Settings className="w-4 h-4" />
@@ -208,11 +223,25 @@ export default function Header() {
                                     {link.label}
                                 </Link>
                             ))}
+                            {/* Mobile Logic for Seller Option */}
+                            {isAuthenticated && currentUser?.role === 'customer' && (
+                                <button
+                                    onClick={() => {
+                                        dispatch(setMobileMenuOpen(false));
+                                        setIsSellerModalOpen(true);
+                                    }}
+                                    className="px-4 py-3 text-left w-full text-mocha-700 hover:bg-mocha-100 rounded-xl font-medium transition-colors flex items-center gap-2"
+                                >
+                                    <Store className="w-4 h-4" />
+                                    Become a Seller
+                                </button>
+                            )}
                         </nav>
                     </div>
                 )}
             </header>
             <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
+            <SellerRegistrationModal isOpen={isSellerModalOpen} onClose={() => setIsSellerModalOpen(false)} />
         </>
     );
 }

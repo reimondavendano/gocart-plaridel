@@ -6,11 +6,26 @@ import Footer from '@/components/layout/Footer';
 import CartDrawer from '@/components/cart/CartDrawer';
 import SearchModal from '@/components/search/SearchModal';
 import ToastContainer from '@/components/ui/Toast';
-import { Check, Star, Store, Zap, Shield, TrendingUp } from 'lucide-react';
-import Link from 'next/link';
+import SellerRegistrationModal from '@/components/seller/SellerRegistrationModal';
+import AuthModal from '@/components/auth/AuthModal';
+import { useAppSelector } from '@/store';
+import { Check, Store, Zap, Shield, TrendingUp } from 'lucide-react';
 
 export default function SubscriptionPage() {
+    const { isAuthenticated } = useAppSelector((state) => state.user);
     const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
+    const [isSellerModalOpen, setIsSellerModalOpen] = useState(false);
+    const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+    const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+
+    const handleSubscribe = (planName: string) => {
+        if (!isAuthenticated) {
+            setIsAuthModalOpen(true);
+            return;
+        }
+        setSelectedPlan(planName);
+        setIsSellerModalOpen(true);
+    };
 
     const plans = [
         {
@@ -130,8 +145,8 @@ export default function SubscriptionPage() {
                             <div
                                 key={plan.name}
                                 className={`relative rounded-3xl p-8 border hover:-translate-y-2 transition-transform duration-300 flex flex-col ${plan.popular
-                                    ? 'bg-white border-mocha-200 shadow-xl ring-2 ring-mocha-500/20'
-                                    : 'bg-white border-gray-100 shadow-lg'
+                                        ? 'bg-white border-mocha-200 shadow-xl ring-2 ring-mocha-500/20'
+                                        : 'bg-white border-gray-100 shadow-lg'
                                     }`}
                             >
                                 {plan.popular && (
@@ -166,7 +181,10 @@ export default function SubscriptionPage() {
                                     ))}
                                 </ul>
 
-                                <button className={`w-full py-3 rounded-xl font-semibold transition-colors ${plan.btnColor}`}>
+                                <button
+                                    onClick={() => handleSubscribe(plan.name)}
+                                    className={`w-full py-3 rounded-xl font-semibold transition-colors ${plan.btnColor}`}
+                                >
                                     {plan.price === 0 ? 'Get Started' : 'Subscribe Now'}
                                 </button>
                             </div>
@@ -191,6 +209,15 @@ export default function SubscriptionPage() {
             </main>
             <Footer />
             <CartDrawer />
+            <SellerRegistrationModal
+                isOpen={isSellerModalOpen}
+                onClose={() => setIsSellerModalOpen(false)}
+                initialPlan={selectedPlan}
+            />
+            <AuthModal
+                isOpen={isAuthModalOpen}
+                onClose={() => setIsAuthModalOpen(false)}
+            />
             <SearchModal />
             <ToastContainer />
         </>
