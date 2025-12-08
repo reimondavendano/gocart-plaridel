@@ -10,7 +10,7 @@ export default function HeroSection() {
     const isPlus = currentUser?.subscription === 'plus';
 
     return (
-        <section className="relative min-h-[90vh] flex items-center overflow-hidden pb-0">
+        <section className="relative min-h-[90vh] flex items-center overflow-hidden pb-0 pt-32 lg:pt-0">
             {/* Background */}
             <div className="absolute inset-0 bg-gradient-to-br from-cloud-200 via-mocha-100 to-cloud-200" />
 
@@ -29,7 +29,7 @@ export default function HeroSection() {
                         {/* Badge */}
                         <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-mocha-100 border border-mocha-200 mb-6">
                             <Sparkles className="w-4 h-4 text-mocha-500" />
-                            <span className="text-sm font-medium text-mocha-700">AI-Powered Shopping Experience</span>
+                            <span className="text-sm font-medium text-mocha-700">GoCart Shopping Experience</span>
                         </div>
 
                         {/* Headline */}
