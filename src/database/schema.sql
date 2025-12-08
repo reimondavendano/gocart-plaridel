@@ -8,12 +8,29 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- ENUMS
 -- =====================================================
 
-CREATE TYPE user_role AS ENUM ('admin', 'seller', 'customer');
+CREATE TYPE user_role AS ENUM ('seller', 'customer'); -- Removed 'admin'
 CREATE TYPE subscription_plan AS ENUM ('free', 'plus');
 CREATE TYPE store_status AS ENUM ('pending', 'approved', 'rejected');
 CREATE TYPE order_status AS ENUM ('pending', 'processing', 'shipped', 'delivered', 'cancelled', 'returned', 'refunded');
 CREATE TYPE payment_method AS ENUM ('cod', 'xendit');
 CREATE TYPE payment_status AS ENUM ('pending', 'paid', 'failed', 'refunded');
+
+-- =====================================================
+-- ADMINS TABLE (Separate from Users)
+-- =====================================================
+
+CREATE TABLE admins (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL, -- Store hashed password in production
+    name VARCHAR(255),
+    role VARCHAR(20) DEFAULT 'super_admin',
+    last_login TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_admins_email ON admins(email);
 
 -- =====================================================
 -- USERS TABLE
@@ -208,9 +225,10 @@ CREATE TABLE order_items (
 CREATE INDEX idx_order_items_order ON order_items(order_id);
 
 -- =====================================================
--- SEED DATA (Base Categories)
+-- SEED DATA
 -- =====================================================
 
+-- Default Categories
 INSERT INTO categories (name, slug, icon, image, description) VALUES
 ('Electronics', 'electronics', 'Smartphone', 'https://images.unsplash.com/photo-1498049794561-7780e7231661?w=800', 'Gadgets, devices, and tech accessories'),
 ('Fashion', 'fashion', 'Shirt', 'https://images.unsplash.com/photo-1445205170230-053b83016050?w=800', 'Clothing, shoes, and accessories'),
@@ -218,3 +236,7 @@ INSERT INTO categories (name, slug, icon, image, description) VALUES
 ('Beauty', 'beauty', 'Sparkles', 'https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=800', 'Skincare, makeup, and personal care'),
 ('Sports & Outdoors', 'sports', 'Dumbbell', 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=800', 'Fitness equipment and outdoor gear'),
 ('Books & Stationery', 'books', 'BookOpen', 'https://images.unsplash.com/photo-1495446815901-a7297e633e8d?w=800', 'Books, office supplies, and art materials');
+
+-- Seed Admin
+INSERT INTO admins (email, password, name, role) VALUES 
+('gocart-plaridel@admin.com', 'G0C@rT@dmin619Tyg!', 'Plaridel Admin', 'super_admin');
