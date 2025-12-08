@@ -50,7 +50,7 @@ export default function HeroSection() {
                         {/* Description */}
                         <p className="text-lg text-mocha-600 mb-8 max-w-lg mx-auto lg:mx-0">
                             Your multi-vendor marketplace for electronics, fashion, beauty, and more.
-                            Enjoy exclusive deals, AI-generated product insights, and seamless shopping.
+                            Enjoy exclusive deals, GoCart product insights, and seamless shopping.
                         </p>
 
                         {/* CTAs */}
