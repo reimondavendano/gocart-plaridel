@@ -16,6 +16,7 @@ export interface User {
     role: UserRole;
     subscription: SubscriptionPlan;
     phone?: string;
+    passwordHash?: string;
     createdAt: string;
     updatedAt: string;
 }
@@ -154,12 +155,13 @@ export interface Rating {
 export const mockUsers: User[] = [
     {
         id: 'usr_admin_001',
-        email: 'admin@gocartplaridel.com',
-        name: 'Admin GoCart',
+        email: 'gocart-plaridel@admin.com',
+        name: 'Plaridel Admin',
         avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=admin',
         role: 'admin',
         subscription: 'plus',
         phone: '+63 917 123 4567',
+        passwordHash: '$2a$10$X7...', // Mock bcrypt hash for 'G0C@rT@dmin619Tyg!'
         createdAt: '2024-01-01T00:00:00Z',
         updatedAt: '2024-12-01T00:00:00Z',
     },

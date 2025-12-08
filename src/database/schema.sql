@@ -3,12 +3,14 @@
 
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+-- Enable PGCrypto for password hashing
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- =====================================================
 -- ENUMS
 -- =====================================================
 
-CREATE TYPE user_role AS ENUM ('seller', 'customer'); -- Removed 'admin'
+CREATE TYPE user_role AS ENUM ('seller', 'customer');
 CREATE TYPE subscription_plan AS ENUM ('free', 'plus');
 CREATE TYPE store_status AS ENUM ('pending', 'approved', 'rejected');
 CREATE TYPE order_status AS ENUM ('pending', 'processing', 'shipped', 'delivered', 'cancelled', 'returned', 'refunded');
@@ -16,44 +18,63 @@ CREATE TYPE payment_method AS ENUM ('cod', 'xendit');
 CREATE TYPE payment_status AS ENUM ('pending', 'paid', 'failed', 'refunded');
 
 -- =====================================================
--- ADMINS TABLE (Separate from Users)
+-- ADMIN TABLES
 -- =====================================================
 
+-- Admin Profile
 CREATE TABLE admins (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    email VARCHAR(255) UNIQUE NOT NULL,
-    password VARCHAR(255) NOT NULL, -- Store hashed password in production
-    name VARCHAR(255),
+    name VARCHAR(255) NOT NULL,
     role VARCHAR(20) DEFAULT 'super_admin',
-    last_login TIMESTAMP WITH TIME ZONE,
+    avatar TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE INDEX idx_admins_email ON admins(email);
+-- Admin Login Credentials
+CREATE TABLE admin_credentials (
+    admin_id UUID REFERENCES admins(id) ON DELETE CASCADE PRIMARY KEY,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    last_login TIMESTAMP WITH TIME ZONE,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_admin_creds_email ON admin_credentials(email);
 
 -- =====================================================
--- USERS TABLE
+-- USER TABLES
 -- =====================================================
 
+-- User Profile (Info)
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    email VARCHAR(255) UNIQUE NOT NULL,
     name VARCHAR(255) NOT NULL,
     avatar TEXT,
     role user_role DEFAULT 'customer',
     subscription subscription_plan DEFAULT 'free',
     phone VARCHAR(50),
-    clerk_id VARCHAR(255) UNIQUE, -- Clerk authentication ID
     subscription_expires_at TIMESTAMP WITH TIME ZONE,
     is_new_user BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_users_role ON users(role);
-CREATE INDEX idx_users_clerk_id ON users(clerk_id);
+
+-- User Login Credentials
+CREATE TABLE user_credentials (
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE PRIMARY KEY,
+    username VARCHAR(50) UNIQUE,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    clerk_id VARCHAR(255) UNIQUE, -- Optional: Keep for external auth reference if needed
+    last_login TIMESTAMP WITH TIME ZONE,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_user_creds_email ON user_credentials(email);
+CREATE INDEX idx_user_creds_username ON user_credentials(username);
 
 -- =====================================================
 -- STORES TABLE
@@ -238,5 +259,12 @@ INSERT INTO categories (name, slug, icon, image, description) VALUES
 ('Books & Stationery', 'books', 'BookOpen', 'https://images.unsplash.com/photo-1495446815901-a7297e633e8d?w=800', 'Books, office supplies, and art materials');
 
 -- Seed Admin
-INSERT INTO admins (email, password, name, role) VALUES 
-('gocart-plaridel@admin.com', 'G0C@rT@dmin619Tyg!', 'Plaridel Admin', 'super_admin');
+WITH new_admin AS (
+    INSERT INTO admins (name) VALUES ('Plaridel Admin') RETURNING id
+)
+INSERT INTO admin_credentials (admin_id, email, password_hash)
+VALUES (
+    (SELECT id FROM new_admin),
+    'gocart-plaridel@admin.com',
+    crypt('G0C@rT@dmin619Tyg!', gen_salt('bf'))
+);
