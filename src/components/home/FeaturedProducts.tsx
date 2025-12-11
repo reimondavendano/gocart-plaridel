@@ -1,21 +1,34 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ArrowRight, Flame } from 'lucide-react';
 import ProductCard from '@/components/product/ProductCard';
-import { mockProducts } from '@/data/mockup';
+import { useAppDispatch, useAppSelector } from '@/store';
+import { fetchProducts } from '@/store/slices/productSlice';
 
 const tabs = ['All', 'Electronics', 'Fashion', 'Trending'];
 
 export default function FeaturedProducts() {
+    const dispatch = useAppDispatch();
+    const { products, isLoading } = useAppSelector((state) => state.product);
     const [activeTab, setActiveTab] = useState('All');
 
+    useEffect(() => {
+        if (products.length === 0) {
+            dispatch(fetchProducts());
+        }
+    }, [dispatch, products.length]);
+
     const filteredProducts = activeTab === 'All'
-        ? mockProducts.filter(p => p.isFeatured)
+        ? products.filter((p) => p.isFeatured)
         : activeTab === 'Trending'
-            ? mockProducts.slice().sort((a, b) => b.reviewCount - a.reviewCount).slice(0, 4)
-            : mockProducts.filter(p => p.category.toLowerCase() === activeTab.toLowerCase());
+            ? [...products].sort((a, b) => b.reviewCount - a.reviewCount).slice(0, 4)
+            : products.filter((p) => p.category.toLowerCase() === activeTab.toLowerCase());
+
+    if (isLoading && products.length === 0) {
+        return <div className="py-12 text-center text-mocha-600">Loading hot picks...</div>;
+    }
 
     return (
         <section className="py-12">

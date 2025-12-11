@@ -1,5 +1,5 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { Product, CartItem } from '@/data/mockup';
+import { Product, CartItem } from '@/types';
 
 interface CartState {
     items: CartItem[];
@@ -27,6 +27,7 @@ const cartSlice = createSlice({
 
             if (existingItem) {
                 existingItem.quantity += quantity;
+                existingItem.total = existingItem.price * existingItem.quantity;
             } else {
                 state.items.push({
                     id: `cart_${Date.now()}`,
@@ -34,6 +35,7 @@ const cartSlice = createSlice({
                     product,
                     quantity,
                     price: product.price,
+                    total: product.price * quantity,
                 });
             }
         },
@@ -44,6 +46,7 @@ const cartSlice = createSlice({
             const item = state.items.find((i) => i.productId === action.payload.productId);
             if (item) {
                 item.quantity = Math.max(1, action.payload.quantity);
+                item.total = item.price * item.quantity;
             }
         },
         clearCart: (state) => {
@@ -80,8 +83,9 @@ export const {
 } = cartSlice.actions;
 
 export const selectCartItems = (state: { cart: CartState }) => state.cart.items;
+// Using stored total or computing it. Computing is safer if price changes, but here we use item.price
 export const selectCartTotal = (state: { cart: CartState }) =>
-    state.cart.items.reduce((total, item) => total + item.price * item.quantity, 0);
+    state.cart.items.reduce((total, item) => total + item.total, 0);
 export const selectCartCount = (state: { cart: CartState }) =>
     state.cart.items.reduce((count, item) => count + item.quantity, 0);
 

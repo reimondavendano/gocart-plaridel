@@ -9,10 +9,11 @@ import {
 import { useAppDispatch, useAppSelector } from '@/store';
 import { selectCartCount } from '@/store/slices/cartSlice';
 import { setCartOpen, setSearchOpen, setMobileMenuOpen } from '@/store/slices/uiSlice';
-import { mockUsers } from '@/data/mockup';
 import { setUser, logout } from '@/store/slices/userSlice';
 import AuthModal from '@/components/auth/AuthModal';
 import SellerRegistrationModal from '@/components/seller/SellerRegistrationModal';
+import { supabase } from '@/lib/supabase';
+import { User as UserType } from '@/types';
 
 const navLinks = [
     { href: '/', label: 'Home' },
@@ -35,15 +36,141 @@ export default function Header() {
     useEffect(() => {
         const handleScroll = () => setScrolled(window.scrollY > 20);
         window.addEventListener('scroll', handleScroll);
-        return () => window.removeEventListener('scroll', handleScroll);
-    }, []);
 
-    const handleLogout = () => {
+        const fetchProfile = async (session: any) => {
+            if (!session?.user) return;
+
+            try {
+                // 1. Try fetching profile with plan data
+                let { data: profile, error } = await supabase
+                    .from('users')
+                    .select('*, plan:plans(*)')
+                    .eq('id', session.user.id)
+                    .single();
+
+                // 2. Fallback: If querying with plan fails (e.g., schema relationship issue), try basic fetch
+                if (error && error.code !== 'PGRST116') {
+                    console.warn('Fetching with plan failed, trying basic profile fetch...', error.message);
+                    const { data: basicProfile, error: basicError } = await supabase
+                        .from('users')
+                        .select('*')
+                        .eq('id', session.user.id)
+                        .single();
+
+                    if (!basicError) {
+                        profile = basicProfile;
+                        error = null;
+                    } else {
+                        error = basicError;
+                    }
+                }
+
+                // 3. Handle Existing Profile
+                if (profile) {
+                    const mappedUser: UserType = {
+                        id: profile.id,
+                        email: profile.email,
+                        name: profile.name,
+                        role: profile.role,
+                        planId: profile.plan_id,
+                        plan: profile.plan ? {
+                            id: profile.plan.id,
+                            name: profile.plan.name,
+                            price: profile.plan.price,
+                            currency: profile.plan.currency,
+                            features: profile.plan.features,
+                            maxStores: profile.plan.max_stores,
+                            maxProducts: profile.plan.max_products,
+                            transactionFee: profile.plan.transaction_fee,
+                            isActive: profile.plan.is_active,
+                            createdAt: profile.plan.created_at
+                        } : undefined,
+                        avatar: profile.avatar,
+                        phone: profile.phone,
+                        createdAt: profile.created_at,
+                        updatedAt: profile.updated_at
+                    };
+                    dispatch(setUser(mappedUser));
+                }
+                // 4. Handle New User (Social Login first time) - STRICT CHECK for "Row not found"
+                else if (error && error.code === 'PGRST116') {
+                    const newProfile = {
+                        id: session.user.id,
+                        email: session.user.email!,
+                        name: session.user.user_metadata.full_name || session.user.email!.split('@')[0],
+                        avatar: session.user.user_metadata.avatar_url,
+                        role: 'customer',
+                        plan_id: null, // Optional for new customers
+                        created_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                    };
+
+                    const { error: insertError } = await supabase
+                        .from('users')
+                        .insert([newProfile]);
+
+                    if (!insertError) {
+                        // Default 'Starter' plan for Redux state (even if null in DB)
+                        const starterPlan = {
+                            id: '11111111-1111-1111-1111-111111111111',
+                            name: 'Starter',
+                            price: 0,
+                            currency: 'PHP',
+                            features: [],
+                            maxStores: 1,
+                            maxProducts: 1,
+                            transactionFee: 3,
+                            isActive: true,
+                            createdAt: new Date().toISOString()
+                        };
+
+                        dispatch(setUser({
+                            id: newProfile.id,
+                            email: newProfile.email,
+                            name: newProfile.name,
+                            avatar: newProfile.avatar,
+                            role: 'customer' as const,
+                            planId: newProfile.plan_id,
+                            plan: starterPlan,
+                            createdAt: newProfile.created_at,
+                            updatedAt: newProfile.updated_at
+                        }));
+                    } else {
+                        console.error("Failed to create new profile:", insertError);
+                    }
+                }
+            } catch (err) {
+                console.error("Unexpected error in auth flow:", err);
+            }
+        };
+
+        // Initialize Session
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            if (session) fetchProfile(session);
+        });
+
+        // Listen for changes
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+            if (event === 'SIGNED_IN' && session) {
+                fetchProfile(session);
+            } else if (event === 'SIGNED_OUT') {
+                dispatch(logout());
+            }
+        });
+
+        return () => {
+            window.removeEventListener('scroll', handleScroll);
+            subscription.unsubscribe();
+        };
+    }, [dispatch]);
+
+    const handleLogout = async () => {
+        await supabase.auth.signOut();
         dispatch(logout());
         setUserMenuOpen(false);
     };
 
-    const isPlus = currentUser?.subscription === 'plus';
+    const isPlus = currentUser?.plan?.name === 'Growth' || currentUser?.plan?.name === 'Pro' || currentUser?.plan?.name === 'Enterprise';
 
     return (
         <>

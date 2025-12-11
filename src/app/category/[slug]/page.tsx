@@ -1,23 +1,112 @@
 'use client';
 
-import { useParams } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useParams, notFound } from 'next/navigation';
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
 import { ArrowLeft, Filter, SlidersHorizontal } from 'lucide-react';
-import { mockCategories, mockProducts } from '@/data/mockup';
+import { supabase } from '@/lib/supabase';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import CartDrawer from '@/components/cart/CartDrawer';
 import SearchModal from '@/components/search/SearchModal';
 import ToastContainer from '@/components/ui/Toast';
 import ProductCard from '@/components/product/ProductCard';
+import { Category, Product } from '@/types';
 
 export default function CategoryPage() {
     const params = useParams();
     const slug = params.slug as string;
 
-    const category = mockCategories.find((c) => c.slug === slug);
-    const products = mockProducts.filter((p) => p.category === slug);
+    const [category, setCategory] = useState<Category | null>(null);
+    const [products, setProducts] = useState<Product[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        async function fetchData() {
+            setLoading(true);
+            try {
+                // Fetch Category
+                const { data: categoryData, error: categoryError } = await supabase
+                    .from('categories')
+                    .select('*')
+                    .eq('slug', slug)
+                    .single();
+
+                if (categoryError || !categoryData) {
+                    console.error('Error fetching category:', categoryError);
+                    setLoading(false);
+                    return;
+                }
+
+                setCategory({
+                    id: categoryData.id,
+                    name: categoryData.name,
+                    slug: categoryData.slug,
+                    description: categoryData.description || '',
+                    image: categoryData.image || '/placeholder-category.jpg',
+                    icon: categoryData.icon || 'Package',
+                    productCount: 0 // Will update if needed
+                });
+
+                // Fetch Products for this Category (exact match or related? Assuming category column in products matches slug or id)
+                // Actually products usually have category_id or category slug. Schema assumed category_id.
+                // But let's check if we can query by category slug if products table has it, or join.
+                // For simplicity, assuming products table has 'category' column storing slug, or we need to query by ID.
+                // Let's assume 'category_id' is used.
+
+                const { data: productsData, error: productsError } = await supabase
+                    .from('products')
+                    .select('*')
+                    .eq('category_id', categoryData.id); // Assuming category_id matches category.id
+
+                if (productsError) {
+                    console.error('Error fetching products:', productsError);
+                }
+
+                if (productsData) {
+                    const mappedProducts: Product[] = productsData.map((item: any) => ({
+                        id: item.id,
+                        name: item.name,
+                        slug: item.slug,
+                        description: item.description,
+                        price: item.price,
+                        comparePrice: item.compare_price,
+                        images: item.images || [],
+                        category: item.category_id, // keeping it loose for now
+                        storeId: item.store_id,
+                        rating: item.rating || 0,
+                        reviewCount: item.review_count || 0,
+                        stock: item.stock || 0,
+                        isNew: item.is_new || false,
+                        aiGenerated: item.ai_generated || false,
+                        tags: item.tags || []
+                    }));
+                    setProducts(mappedProducts);
+                }
+
+            } catch (error) {
+                console.error(error);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        if (slug) {
+            fetchData();
+        }
+    }, [slug]);
+
+    if (loading) {
+        return (
+            <>
+                <Header />
+                <div className="min-h-screen pt-24 pb-16 flex justify-center items-center">
+                    <p className="text-mocha-500">Loading category...</p>
+                </div>
+                <Footer />
+            </>
+        )
+    }
 
     if (!category) {
         notFound();
@@ -115,7 +204,7 @@ export default function CategoryPage() {
                                     <Filter className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                                     <h3 className="text-xl font-bold text-gray-900 mb-2">No Products Found</h3>
                                     <p className="text-gray-500 mb-6">
-                                        We couldn't find any products in this category right now.
+                                        We couldn&apos;t find any products in this category right now.
                                     </p>
                                     <Link href="/products" className="btn-primary inline-flex items-center gap-2">
                                         View All Products

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import Link from 'next/link';
 import Header from '@/components/layout/Header';
@@ -9,7 +9,8 @@ import ToastContainer from '@/components/ui/Toast';
 import { RootState } from '@/store';
 import { selectCartItems, selectCartTotal, clearCart } from '@/store/slices/cartSlice';
 import { addToast } from '@/store/slices/uiSlice';
-import { mockAddresses } from '@/data/mockup';
+import { supabase } from '@/lib/supabase';
+import { Address } from '@/types';
 import {
     MapPin, CreditCard, Truck, Shield, ChevronRight,
     Plus, Check, Tag, Crown, ArrowLeft
@@ -22,14 +23,70 @@ export default function CheckoutPage() {
     const { currentUser } = useSelector((state: RootState) => state.user);
     const { discount, shipping } = useSelector((state: RootState) => state.cart);
 
-    const [selectedAddress, setSelectedAddress] = useState(mockAddresses[0]?.id || '');
+    const [addresses, setAddresses] = useState<Address[]>([]);
+    const [selectedAddress, setSelectedAddress] = useState('');
     const [paymentMethod, setPaymentMethod] = useState<'cod' | 'xendit'>('cod');
     const [couponCode, setCouponCode] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
+    const [isLoadingAddresses, setIsLoadingAddresses] = useState(true);
 
-    const isPlus = currentUser?.subscription === 'plus';
+    const isPlus = currentUser?.plan?.name === 'Growth' || currentUser?.plan?.name === 'Pro' || currentUser?.plan?.name === 'Enterprise';
     const finalShipping = isPlus ? 0 : shipping;
     const total = subtotal - discount + finalShipping;
+
+    // Fetch addresses from Supabase
+    useEffect(() => {
+        async function fetchAddresses() {
+            if (!currentUser) return;
+
+            try {
+                const { data, error } = await supabase
+                    .from('addresses')
+                    .select('*')
+                    .eq('user_id', currentUser.id);
+
+                if (error) {
+                    console.error('Error fetching addresses:', error);
+                    return;
+                }
+
+                if (data) {
+                    const mappedAddresses: Address[] = data.map((item: any) => ({
+                        id: item.id,
+                        userId: item.user_id,
+                        label: item.label,
+                        fullName: item.full_name,
+                        phone: item.phone,
+                        street: item.street,
+                        city: item.city,
+                        province: item.province,
+                        postalCode: item.postal_code,
+                        country: item.country || 'Philippines',
+                        isDefault: item.is_default,
+                    }));
+                    setAddresses(mappedAddresses);
+                    // Set default address selected
+                    const defaultAddr = mappedAddresses.find(a => a.isDefault);
+                    if (defaultAddr) {
+                        setSelectedAddress(defaultAddr.id);
+                    } else if (mappedAddresses.length > 0) {
+                        setSelectedAddress(mappedAddresses[0].id);
+                    }
+                }
+            } catch (err) {
+                console.error(err);
+            } finally {
+                setIsLoadingAddresses(false);
+            }
+        }
+
+        if (currentUser) {
+            fetchAddresses();
+        } else {
+            setIsLoadingAddresses(false);
+        }
+    }, [currentUser]);
+
 
     const handlePlaceOrder = async () => {
         if (!selectedAddress) {
@@ -39,12 +96,20 @@ export default function CheckoutPage() {
 
         setIsProcessing(true);
 
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        try {
+            // Simulate API call for now, later implement real order creation
+            await new Promise(resolve => setTimeout(resolve, 2000));
 
-        dispatch(clearCart());
-        dispatch(addToast({ type: 'success', title: 'Order Placed!', message: 'Thank you for your purchase.' }));
-        setIsProcessing(false);
+            // TODO: Insert into 'orders' table in Supabase
+
+            dispatch(clearCart());
+            dispatch(addToast({ type: 'success', title: 'Order Placed!', message: 'Thank you for your purchase.' }));
+        } catch (error) {
+            console.error('Order placement failed:', error);
+            dispatch(addToast({ type: 'error', title: 'Order Failed', message: 'Something went wrong.' }));
+        } finally {
+            setIsProcessing(false);
+        }
 
         // In real app, would redirect to order confirmation
     };
@@ -100,39 +165,47 @@ export default function CheckoutPage() {
                                 </div>
 
                                 <div className="space-y-3">
-                                    {mockAddresses.map((address) => (
-                                        <label
-                                            key={address.id}
-                                            className={`flex items-start gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedAddress === address.id
+                                    {isLoadingAddresses ? (
+                                        <div className="text-center py-6 text-mocha-500">Loading addresses...</div>
+                                    ) : addresses.length > 0 ? (
+                                        addresses.map((address) => (
+                                            <label
+                                                key={address.id}
+                                                className={`flex items-start gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedAddress === address.id
                                                     ? 'border-mocha-500 bg-mocha-50'
                                                     : 'border-cloud-400 hover:border-mocha-300'
-                                                }`}
-                                        >
-                                            <input
-                                                type="radio"
-                                                name="address"
-                                                value={address.id}
-                                                checked={selectedAddress === address.id}
-                                                onChange={(e) => setSelectedAddress(e.target.value)}
-                                                className="sr-only"
-                                            />
-                                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${selectedAddress === address.id ? 'border-mocha-500 bg-mocha-500' : 'border-mocha-300'
-                                                }`}>
-                                                {selectedAddress === address.id && <Check className="w-3 h-3 text-white" />}
-                                            </div>
-                                            <div className="flex-1">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="font-medium text-mocha-900">{address.label}</span>
-                                                    {address.isDefault && (
-                                                        <span className="text-xs px-2 py-0.5 rounded-full bg-mocha-200 text-mocha-700">Default</span>
-                                                    )}
+                                                    }`}
+                                            >
+                                                <input
+                                                    type="radio"
+                                                    name="address"
+                                                    value={address.id}
+                                                    checked={selectedAddress === address.id}
+                                                    onChange={(e) => setSelectedAddress(e.target.value)}
+                                                    className="sr-only"
+                                                />
+                                                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${selectedAddress === address.id ? 'border-mocha-500 bg-mocha-500' : 'border-mocha-300'
+                                                    }`}>
+                                                    {selectedAddress === address.id && <Check className="w-3 h-3 text-white" />}
                                                 </div>
-                                                <p className="text-mocha-700 mt-1">{address.fullName}</p>
-                                                <p className="text-sm text-mocha-500">{address.phone}</p>
-                                                <p className="text-sm text-mocha-500">{address.street}, {address.city}, {address.province} {address.postalCode}</p>
-                                            </div>
-                                        </label>
-                                    ))}
+                                                <div className="flex-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-medium text-mocha-900">{address.label}</span>
+                                                        {address.isDefault && (
+                                                            <span className="text-xs px-2 py-0.5 rounded-full bg-mocha-200 text-mocha-700">Default</span>
+                                                        )}
+                                                    </div>
+                                                    <p className="text-mocha-700 mt-1">{address.fullName}</p>
+                                                    <p className="text-sm text-mocha-500">{address.phone}</p>
+                                                    <p className="text-sm text-mocha-500">{address.street}, {address.city}, {address.province} {address.postalCode}</p>
+                                                </div>
+                                            </label>
+                                        ))
+                                    ) : (
+                                        <div className="text-center py-6 text-mocha-500">
+                                            No addresses found. Please add one.
+                                        </div>
+                                    )}
 
                                     <button className="flex items-center gap-2 w-full p-4 rounded-xl border-2 border-dashed border-mocha-300 text-mocha-600 hover:border-mocha-400 hover:bg-mocha-50 transition-colors">
                                         <Plus className="w-5 h-5" />
@@ -157,8 +230,8 @@ export default function CheckoutPage() {
                                     {/* COD */}
                                     <label
                                         className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${paymentMethod === 'cod'
-                                                ? 'border-mocha-500 bg-mocha-50'
-                                                : 'border-cloud-400 hover:border-mocha-300'
+                                            ? 'border-mocha-500 bg-mocha-50'
+                                            : 'border-cloud-400 hover:border-mocha-300'
                                             }`}
                                     >
                                         <input
@@ -183,8 +256,8 @@ export default function CheckoutPage() {
                                     {/* Xendit */}
                                     <label
                                         className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${paymentMethod === 'xendit'
-                                                ? 'border-mocha-500 bg-mocha-50'
-                                                : 'border-cloud-400 hover:border-mocha-300'
+                                            ? 'border-mocha-500 bg-mocha-50'
+                                            : 'border-cloud-400 hover:border-mocha-300'
                                             }`}
                                     >
                                         <input

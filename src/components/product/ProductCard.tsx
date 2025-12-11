@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { Star, Heart, ShoppingCart, Eye } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '@/store';
-import { Product } from '@/data/mockup';
+import { Product } from '@/types';
 import { addToCart } from '@/store/slices/cartSlice';
 import { addToast } from '@/store/slices/uiSlice';
 import { toggleWishlist, selectIsInWishlist } from '@/store/slices/wishlistSlice';
@@ -44,8 +44,6 @@ export default function ProductCard({ product, variant = 'default' }: ProductCar
                 : `${product.name} has been added to your wishlist.`,
         }));
     };
-
-    // ... (rest of compact variant logic, just need to update imports mainly, but let's assume standard handling)
 
     if (variant === 'compact') {
         return (
@@ -128,7 +126,7 @@ export default function ProductCard({ product, variant = 'default' }: ProductCar
 
                 {/* Content - Compact spacing */}
                 <div className="p-2.5">
-                    <p className="text-[10px] text-mocha-500 truncate uppercase tracking-wide">{product.storeName}</p>
+                    <p className="text-[10px] text-mocha-500 truncate uppercase tracking-wide">{product.storeName || 'Unknown Store'}</p>
                     <h3 className="font-medium text-xs text-mocha-900 group-hover:text-mocha-600 transition-colors line-clamp-2 mt-0.5 leading-snug min-h-[32px]">
                         {product.name}
                     </h3>

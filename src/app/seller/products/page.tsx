@@ -1,0 +1,300 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { useAppSelector } from '@/store';
+import { supabase } from '@/lib/supabase';
+import {
+    Search, Plus, Filter, MoreVertical, Edit, Trash2, Eye,
+    Package, Image as ImageIcon, Tag, DollarSign, ChevronDown
+} from 'lucide-react';
+
+interface Product {
+    id: string;
+    name: string;
+    slug: string;
+    description: string;
+    price: number;
+    compare_price: number | null;
+    images: string[];
+    stock: number;
+    in_stock: boolean;
+    rating: number;
+    review_count: number;
+    category_slug: string;
+    is_featured: boolean;
+    is_new: boolean;
+    created_at: string;
+}
+
+interface Category {
+    slug: string;
+    name: string;
+}
+
+export default function SellerProductsPage() {
+    const { currentUser } = useAppSelector((state) => state.user);
+    const [products, setProducts] = useState<Product[]>([]);
+    const [categories, setCategories] = useState<Category[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [categoryFilter, setCategoryFilter] = useState('all');
+    const [storeId, setStoreId] = useState<string | null>(null);
+    const [deleteModal, setDeleteModal] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (currentUser?.id) {
+            fetchStoreAndProducts();
+        }
+    }, [currentUser?.id]);
+
+    const fetchStoreAndProducts = async () => {
+        try {
+            // Get seller's store
+            const { data: store } = await supabase
+                .from('stores')
+                .select('id')
+                .eq('seller_id', currentUser?.id)
+                .single();
+
+            if (store) {
+                setStoreId(store.id);
+
+                // Fetch products
+                const { data: productsData } = await supabase
+                    .from('products')
+                    .select('*')
+                    .eq('store_id', store.id)
+                    .order('created_at', { ascending: false });
+
+                if (productsData) {
+                    setProducts(productsData);
+                }
+            }
+
+            // Fetch categories
+            const { data: categoriesData } = await supabase
+                .from('categories')
+                .select('slug, name')
+                .order('name');
+
+            if (categoriesData) {
+                setCategories(categoriesData);
+            }
+        } catch (error) {
+            console.error('Error fetching products:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDelete = async (productId: string) => {
+        try {
+            const { error } = await supabase
+                .from('products')
+                .delete()
+                .eq('id', productId);
+
+            if (!error) {
+                setProducts(products.filter(p => p.id !== productId));
+            }
+        } catch (error) {
+            console.error('Error deleting product:', error);
+        }
+        setDeleteModal(null);
+    };
+
+    const formatCurrency = (amount: number) => {
+        return new Intl.NumberFormat('en-PH', {
+            style: 'currency',
+            currency: 'PHP',
+            minimumFractionDigits: 0
+        }).format(amount);
+    };
+
+    const filteredProducts = products.filter(product => {
+        const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesCategory = categoryFilter === 'all' || product.category_slug === categoryFilter;
+        return matchesSearch && matchesCategory;
+    });
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center h-96">
+                <div className="w-8 h-8 border-2 border-mocha-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-6">
+            {/* Header */}
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                    <h1 className="text-2xl font-bold text-mocha-900">Products</h1>
+                    <p className="text-mocha-500">Manage your product catalog</p>
+                </div>
+                <Link
+                    href="/seller/products/new"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-mocha-500 hover:bg-mocha-600 text-white font-medium transition-colors"
+                >
+                    <Plus className="w-5 h-5" />
+                    Add Product
+                </Link>
+            </div>
+
+            {/* Filters */}
+            <div className="flex flex-col md:flex-row gap-4">
+                <div className="flex-1 relative">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-mocha-400" />
+                    <input
+                        type="text"
+                        placeholder="Search products..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full pl-12 pr-4 py-3 bg-white border border-mocha-200 rounded-xl text-mocha-900 placeholder:text-mocha-400 focus:outline-none focus:border-mocha-400"
+                    />
+                </div>
+                <div className="relative">
+                    <select
+                        value={categoryFilter}
+                        onChange={(e) => setCategoryFilter(e.target.value)}
+                        className="appearance-none px-4 py-3 pr-10 bg-white border border-mocha-200 rounded-xl text-mocha-900 focus:outline-none focus:border-mocha-400 cursor-pointer"
+                    >
+                        <option value="all">All Categories</option>
+                        {categories.map((cat) => (
+                            <option key={cat.slug} value={cat.slug}>{cat.name}</option>
+                        ))}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-mocha-400 pointer-events-none" />
+                </div>
+            </div>
+
+            {/* Products Grid */}
+            {filteredProducts.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-mocha-100 p-12 text-center">
+                    <div className="w-16 h-16 rounded-2xl bg-mocha-100 flex items-center justify-center mx-auto mb-4">
+                        <Package className="w-8 h-8 text-mocha-400" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-mocha-900 mb-2">No products found</h3>
+                    <p className="text-mocha-500 mb-6">
+                        {searchQuery || categoryFilter !== 'all'
+                            ? 'Try adjusting your search or filter'
+                            : 'Start by adding your first product'}
+                    </p>
+                    <Link
+                        href="/seller/products/new"
+                        className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-mocha-500 hover:bg-mocha-600 text-white font-medium transition-colors"
+                    >
+                        <Plus className="w-5 h-5" />
+                        Add Product
+                    </Link>
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    {filteredProducts.map((product) => (
+                        <div key={product.id} className="bg-white rounded-2xl border border-mocha-100 overflow-hidden hover:shadow-lg transition-shadow group">
+                            {/* Product Image */}
+                            <div className="relative aspect-square bg-mocha-100">
+                                {product.images?.[0] ? (
+                                    <img
+                                        src={product.images[0]}
+                                        alt={product.name}
+                                        className="w-full h-full object-cover"
+                                    />
+                                ) : (
+                                    <div className="w-full h-full flex items-center justify-center">
+                                        <ImageIcon className="w-12 h-12 text-mocha-300" />
+                                    </div>
+                                )}
+                                {/* Badges */}
+                                <div className="absolute top-2 left-2 flex flex-col gap-1">
+                                    {product.is_featured && (
+                                        <span className="px-2 py-1 rounded-lg bg-mocha-500 text-white text-xs font-medium">
+                                            Featured
+                                        </span>
+                                    )}
+                                    {product.is_new && (
+                                        <span className="px-2 py-1 rounded-lg bg-green-500 text-white text-xs font-medium">
+                                            New
+                                        </span>
+                                    )}
+                                    {!product.in_stock && (
+                                        <span className="px-2 py-1 rounded-lg bg-red-500 text-white text-xs font-medium">
+                                            Out of Stock
+                                        </span>
+                                    )}
+                                </div>
+                                {/* Actions Overlay */}
+                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                    <Link
+                                        href={`/product/${product.slug}`}
+                                        className="p-2 rounded-lg bg-white/90 hover:bg-white text-mocha-700 transition-colors"
+                                    >
+                                        <Eye className="w-5 h-5" />
+                                    </Link>
+                                    <Link
+                                        href={`/seller/products/${product.id}/edit`}
+                                        className="p-2 rounded-lg bg-white/90 hover:bg-white text-mocha-700 transition-colors"
+                                    >
+                                        <Edit className="w-5 h-5" />
+                                    </Link>
+                                    <button
+                                        onClick={() => setDeleteModal(product.id)}
+                                        className="p-2 rounded-lg bg-white/90 hover:bg-white text-red-600 transition-colors"
+                                    >
+                                        <Trash2 className="w-5 h-5" />
+                                    </button>
+                                </div>
+                            </div>
+                            {/* Product Info */}
+                            <div className="p-4">
+                                <div className="flex items-start justify-between gap-2">
+                                    <div className="flex-1 min-w-0">
+                                        <h3 className="font-medium text-mocha-900 truncate">{product.name}</h3>
+                                        <p className="text-sm text-mocha-500 capitalize">{product.category_slug?.replace('-', ' ')}</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center justify-between mt-3">
+                                    <div>
+                                        <span className="text-lg font-bold text-mocha-900">{formatCurrency(product.price)}</span>
+                                        {product.compare_price && (
+                                            <span className="ml-2 text-sm text-mocha-400 line-through">
+                                                {formatCurrency(product.compare_price)}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <span className="text-sm text-mocha-500">{product.stock} in stock</span>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* Delete Confirmation Modal */}
+            {deleteModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                    <div className="bg-white rounded-2xl p-6 max-w-sm w-full">
+                        <h3 className="text-lg font-semibold text-mocha-900 mb-2">Delete Product?</h3>
+                        <p className="text-mocha-500 mb-6">This action cannot be undone. The product will be permanently removed.</p>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setDeleteModal(null)}
+                                className="flex-1 px-4 py-2.5 rounded-xl bg-mocha-100 hover:bg-mocha-200 text-mocha-700 font-medium transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={() => handleDelete(deleteModal)}
+                                className="flex-1 px-4 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white font-medium transition-colors"
+                            >
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}

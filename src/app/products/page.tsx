@@ -1,14 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import CartDrawer from '@/components/cart/CartDrawer';
 import SearchModal from '@/components/search/SearchModal';
 import ToastContainer from '@/components/ui/Toast';
 import ProductCard from '@/components/product/ProductCard';
-import { mockProducts, mockCategories } from '@/data/mockup';
 import { Filter, Grid, List, ChevronDown, X, SlidersHorizontal } from 'lucide-react';
+import { useAppDispatch, useAppSelector } from '@/store';
+import { fetchProducts } from '@/store/slices/productSlice';
 
 const sortOptions = [
     { value: 'newest', label: 'Newest' },
@@ -19,13 +20,25 @@ const sortOptions = [
 ];
 
 export default function ProductsPage() {
+    const dispatch = useAppDispatch();
+    const { products, isLoading } = useAppSelector((state) => state.product);
+
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
     const [sortBy, setSortBy] = useState('newest');
     const [selectedCategory, setSelectedCategory] = useState<string>('');
     const [priceRange, setPriceRange] = useState({ min: 0, max: 20000 });
     const [showFilters, setShowFilters] = useState(false);
 
-    let filteredProducts = [...mockProducts];
+    useEffect(() => {
+        if (products.length === 0) {
+            dispatch(fetchProducts());
+        }
+    }, [dispatch, products.length]);
+
+    // Derive categories from product list
+    const categories = Array.from(new Set(products.map(p => p.category)));
+
+    let filteredProducts = [...products];
 
     if (selectedCategory) {
         filteredProducts = filteredProducts.filter(p => p.category === selectedCategory);
@@ -41,7 +54,7 @@ export default function ProductsPage() {
             case 'price-desc': return b.price - a.price;
             case 'rating': return b.rating - a.rating;
             case 'popular': return b.reviewCount - a.reviewCount;
-            default: return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+            default: return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
         }
     });
 
@@ -54,7 +67,9 @@ export default function ProductsPage() {
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
                         <div>
                             <h1 className="text-3xl font-bold text-mocha-900">All Products</h1>
-                            <p className="text-mocha-500">{filteredProducts.length} products found</p>
+                            <p className="text-mocha-500">
+                                {isLoading ? 'Loading...' : `${filteredProducts.length} products found`}
+                            </p>
                         </div>
 
                         <div className="flex items-center gap-4">
@@ -123,14 +138,13 @@ export default function ProductsPage() {
                                         >
                                             All Categories
                                         </button>
-                                        {mockCategories.map((cat) => (
+                                        {categories.map((cat) => (
                                             <button
-                                                key={cat.id}
-                                                onClick={() => setSelectedCategory(cat.slug)}
-                                                className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${selectedCategory === cat.slug ? 'bg-mocha-500 text-white' : 'hover:bg-mocha-100 text-mocha-700'}`}
+                                                key={cat}
+                                                onClick={() => setSelectedCategory(cat)}
+                                                className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${selectedCategory === cat ? 'bg-mocha-500 text-white' : 'hover:bg-mocha-100 text-mocha-700'}`}
                                             >
-                                                {cat.name}
-                                                <span className="text-sm opacity-70 ml-2">({cat.productCount})</span>
+                                                {cat && cat.charAt(0).toUpperCase() + cat.slice(1)}
                                             </button>
                                         ))}
                                     </div>
@@ -174,7 +188,9 @@ export default function ProductsPage() {
 
                         {/* Products Grid */}
                         <div className="flex-1">
-                            {filteredProducts.length > 0 ? (
+                            {isLoading && products.length === 0 ? (
+                                <div className="text-center py-20 text-mocha-500">Loading products...</div>
+                            ) : filteredProducts.length > 0 ? (
                                 <div className={`grid gap-6 ${viewMode === 'grid' ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1'}`}>
                                     {filteredProducts.map((product) => (
                                         <ProductCard key={product.id} product={product} variant={viewMode === 'list' ? 'compact' : 'default'} />

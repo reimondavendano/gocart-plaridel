@@ -5,10 +5,9 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
     Star, Heart, ShoppingCart, Share2, Shield, Truck, RotateCcw,
-    ChevronRight, Minus, Plus, Store, MessageCircle, Check, Package
+    ChevronRight, Minus, Plus, Store as StoreIcon, MessageCircle, Check, Package
 } from 'lucide-react';
 import { useDispatch } from 'react-redux';
-import { mockProducts, mockStores, mockRatings, Product, Rating } from '@/data/mockup';
 import { addToCart } from '@/store/slices/cartSlice';
 import { addToast } from '@/store/slices/uiSlice';
 import Header from '@/components/layout/Header';
@@ -17,21 +16,141 @@ import CartDrawer from '@/components/cart/CartDrawer';
 import SearchModal from '@/components/search/SearchModal';
 import ToastContainer from '@/components/ui/Toast';
 import ProductCard from '@/components/product/ProductCard';
+import { Product, Store, Rating } from '@/types';
+import { supabase } from '@/lib/supabase';
 
 export default function ProductPage() {
     const params = useParams();
     const dispatch = useDispatch();
     const [product, setProduct] = useState<Product | null>(null);
+    const [store, setStore] = useState<Store | null>(null);
+    const [ratings, setRatings] = useState<Rating[]>([]);
+    const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
     const [selectedImage, setSelectedImage] = useState(0);
     const [quantity, setQuantity] = useState(1);
     const [isWishlisted, setIsWishlisted] = useState(false);
     const [activeTab, setActiveTab] = useState<'description' | 'reviews' | 'shipping'>('description');
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const slug = params.slug as string;
-        const foundProduct = mockProducts.find(p => p.slug === slug);
-        setProduct(foundProduct || null);
+        async function fetchProductData() {
+            setLoading(true);
+            const slug = params.slug as string;
+
+            try {
+                // Fetch Product
+                const { data: productData, error: productError } = await supabase
+                    .from('products')
+                    .select('*')
+                    .eq('slug', slug)
+                    .single();
+
+                if (productError || !productData) {
+                    console.error('Error fetching product:', productError);
+                    setLoading(false);
+                    return;
+                }
+
+                const mappedProduct: Product = {
+                    id: productData.id,
+                    name: productData.name,
+                    slug: productData.slug,
+                    description: productData.description,
+                    price: productData.price,
+                    comparePrice: productData.compare_price,
+                    images: productData.images || [],
+                    category: productData.category_id,
+                    storeId: productData.store_id,
+                    rating: productData.rating || 0,
+                    reviewCount: productData.review_count || 0,
+                    stock: productData.stock || 0,
+                    isNew: productData.is_new || false,
+                    aiGenerated: productData.ai_generated || false,
+                    tags: productData.tags || []
+                };
+                setProduct(mappedProduct);
+
+                // Fetch Store
+                if (mappedProduct.storeId) {
+                    const { data: storeData } = await supabase
+                        .from('stores')
+                        .select('*')
+                        .eq('id', mappedProduct.storeId)
+                        .single();
+
+                    if (storeData) {
+                        setStore({
+                            id: storeData.id,
+                            name: storeData.name,
+                            slug: storeData.slug,
+                            description: storeData.description,
+                            logo: storeData.logo,
+                            banner: storeData.banner,
+                            rating: storeData.rating,
+                            totalProducts: storeData.total_products,
+                            verified: storeData.verified,
+                            createdAt: storeData.created_at,
+                            updatedAt: storeData.updated_at || storeData.created_at,
+                            sellerId: storeData.seller_id,
+                            status: storeData.status as Store['status']
+                        });
+                    }
+                }
+
+                // Fetch Ratings (Placeholder for now as ratings table might not expect same UUIDs)
+                setRatings([]);
+
+                // Fetch Related Products
+                const { data: relatedData } = await supabase
+                    .from('products')
+                    .select('*')
+                    .eq('category_id', productData.category_id)
+                    .neq('id', productData.id)
+                    .limit(4);
+
+                if (relatedData) {
+                    setRelatedProducts(relatedData.map((item: any) => ({
+                        id: item.id,
+                        name: item.name,
+                        slug: item.slug,
+                        description: item.description,
+                        price: item.price,
+                        comparePrice: item.compare_price,
+                        images: item.images || [],
+                        category: item.category_id,
+                        storeId: item.store_id,
+                        rating: item.rating || 0,
+                        reviewCount: item.review_count || 0,
+                        stock: item.stock || 0,
+                        isNew: item.is_new || false,
+                        aiGenerated: item.ai_generated || false,
+                        tags: item.tags || []
+                    })));
+                }
+
+            } catch (err) {
+                console.error(err);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        if (params.slug) {
+            fetchProductData();
+        }
     }, [params.slug]);
+
+    if (loading) {
+        return (
+            <>
+                <Header />
+                <main className="min-h-screen pt-24 pb-16 flex items-center justify-center">
+                    <p>Loading product...</p>
+                </main>
+                <Footer />
+            </>
+        );
+    }
 
     if (!product) {
         return (
@@ -55,12 +174,6 @@ export default function ProductPage() {
         );
     }
 
-    const store = mockStores.find(s => s.id === product.storeId);
-    const productRatings = mockRatings.filter(r => r.productId === product.id);
-    const relatedProducts = mockProducts.filter(
-        p => p.category === product.category && p.id !== product.id
-    ).slice(0, 4);
-
     const discount = product.comparePrice
         ? Math.round(((product.comparePrice - product.price) / product.comparePrice) * 100)
         : 0;
@@ -76,7 +189,6 @@ export default function ProductPage() {
 
     const handleBuyNow = () => {
         dispatch(addToCart({ product, quantity }));
-        // Navigate to checkout - for now just show toast
         dispatch(addToast({
             type: 'info',
             title: 'Proceeding to Checkout',
@@ -95,9 +207,7 @@ export default function ProductPage() {
                         <ChevronRight className="w-4 h-4" />
                         <Link href="/products" className="hover:text-mocha-700 transition-colors">Products</Link>
                         <ChevronRight className="w-4 h-4" />
-                        <Link href={`/category/${product.category}`} className="hover:text-mocha-700 transition-colors capitalize">
-                            {product.category}
-                        </Link>
+                        <span className="capitalize">{product.category}</span>
                         <ChevronRight className="w-4 h-4" />
                         <span className="text-mocha-800 truncate max-w-[200px]">{product.name}</span>
                     </nav>
@@ -362,8 +472,8 @@ export default function ProductPage() {
 
                             {activeTab === 'reviews' && (
                                 <div className="space-y-6">
-                                    {productRatings.length > 0 ? (
-                                        productRatings.map(rating => (
+                                    {ratings.length > 0 ? (
+                                        ratings.map(rating => (
                                             <div key={rating.id} className="flex gap-4 pb-6 border-b border-mocha-100 last:border-0">
                                                 <img
                                                     src={rating.userAvatar}

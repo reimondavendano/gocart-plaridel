@@ -1,5 +1,5 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { Coupon } from '@/data/mockup';
+import { Coupon } from '@/types';
 
 interface CouponState {
     coupons: Coupon[];

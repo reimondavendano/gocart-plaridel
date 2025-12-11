@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import CartDrawer from '@/components/cart/CartDrawer';
@@ -9,7 +9,9 @@ import ToastContainer from '@/components/ui/Toast';
 import SellerRegistrationModal from '@/components/seller/SellerRegistrationModal';
 import AuthModal from '@/components/auth/AuthModal';
 import { useAppSelector } from '@/store';
-import { Check, Store, Zap, Shield, TrendingUp } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
+import { Plan } from '@/types';
+import { Check, Store, Zap, Shield, TrendingUp, Loader } from 'lucide-react';
 
 export default function SubscriptionPage() {
     const { isAuthenticated } = useAppSelector((state) => state.user);
@@ -17,6 +19,41 @@ export default function SubscriptionPage() {
     const [isSellerModalOpen, setIsSellerModalOpen] = useState(false);
     const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
     const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+    const [plans, setPlans] = useState<Plan[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        async function fetchPlans() {
+            try {
+                const { data, error } = await supabase
+                    .from('plans')
+                    .select('*')
+                    .eq('is_active', true)
+                    .order('price', { ascending: true });
+
+                if (data) {
+                    const mappedPlans: Plan[] = data.map((p: any) => ({
+                        id: p.id,
+                        name: p.name,
+                        price: p.price,
+                        currency: p.currency,
+                        features: Array.isArray(p.features) ? p.features : [],
+                        maxStores: p.max_stores,
+                        maxProducts: p.max_products,
+                        transactionFee: p.transaction_fee,
+                        isActive: p.is_active,
+                        createdAt: p.created_at
+                    }));
+                    setPlans(mappedPlans);
+                }
+            } catch (err) {
+                console.error("Error fetching plans:", err);
+            } finally {
+                setLoading(false);
+            }
+        }
+        fetchPlans();
+    }, []);
 
     const handleSubscribe = (planName: string) => {
         if (!isAuthenticated) {
@@ -27,81 +64,22 @@ export default function SubscriptionPage() {
         setIsSellerModalOpen(true);
     };
 
-    const plans = [
-        {
-            name: 'Starter',
-            price: 0,
-            description: 'Perfect for new sellers just getting started.',
-            features: [
-                'Create 1 Store (Verification Required)',
-                'Upload up to 1 Product',
-                'Basic Store Analytics',
-                'Standard Transaction Fees (3%)',
-                'Community Support',
-            ],
-            icon: Store,
-            color: 'bg-gray-100',
-            textColor: 'text-gray-900',
-            btnColor: 'bg-gray-900 text-white hover:bg-gray-800',
-            popular: false,
-        },
-        {
-            name: 'Growth',
-            price: 199,
-            description: 'Everything you need to grow your business.',
-            features: [
-                'Create 1 Store (Verification Required)',
-                'Upload up to 50 Products',
-                'Advanced Analytics Dashboard',
-                'Reduced Transaction Fees (2%)',
-                '"Verified Seller" Badge',
-                'Priority Email Support',
-            ],
-            icon: TrendingUp,
-            color: 'bg-blue-50',
-            textColor: 'text-blue-900',
-            btnColor: 'bg-blue-600 text-white hover:bg-blue-700',
-            popular: true,
-        },
-        {
-            name: 'Pro',
-            price: 499,
-            description: 'Advanced tools for established businesses.',
-            features: [
-                'Create up to 2 Stores',
-                'Upload up to 500 Products',
-                'Professional Analytics & Reports',
-                'Low Transaction Fees (1%)',
-                'Marketing Tools (Coupons/Deals)',
-                '"Pro Seller" Badge',
-                '24/7 Priority Support',
-            ],
-            icon: Zap,
-            color: 'bg-mocha-50',
-            textColor: 'text-mocha-900',
-            btnColor: 'bg-mocha-600 text-white hover:bg-mocha-700',
-            popular: false,
-        },
-        {
-            name: 'Enterprise',
-            price: 999,
-            description: 'Maximum power and scale for your brand.',
-            features: [
-                'Unlimited Stores',
-                'Unlimited Product Uploads',
-                'Custom Analytics & API Access',
-                'Lowest Transaction Fees (0.5%)',
-                'Dedicated Account Manager',
-                'Top Search Ranking',
-                'Early Access to New Features',
-            ],
-            icon: Shield,
-            color: 'bg-dusk-50',
-            textColor: 'text-dusk-900',
-            btnColor: 'bg-dusk-600 text-white hover:bg-dusk-700',
-            popular: false,
-        },
-    ];
+    // Helper to get icon based on name
+    const getPlanIcon = (name: string) => {
+        if (name.includes('Starter')) return Store;
+        if (name.includes('Growth')) return TrendingUp;
+        if (name.includes('Pro')) return Zap;
+        if (name.includes('Enterprise')) return Shield;
+        return Store;
+    };
+
+    const getPlanColors = (name: string) => {
+        if (name.includes('Starter')) return { color: 'bg-gray-100', text: 'text-gray-900', btn: 'bg-gray-900 text-white hover:bg-gray-800' };
+        if (name.includes('Growth')) return { color: 'bg-blue-50', text: 'text-blue-900', btn: 'bg-blue-600 text-white hover:bg-blue-700' };
+        if (name.includes('Pro')) return { color: 'bg-mocha-50', text: 'text-mocha-900', btn: 'bg-mocha-600 text-white hover:bg-mocha-700' };
+        if (name.includes('Enterprise')) return { color: 'bg-dusk-50', text: 'text-dusk-900', btn: 'bg-dusk-600 text-white hover:bg-dusk-700' };
+        return { color: 'bg-gray-100', text: 'text-gray-900', btn: 'bg-gray-900' };
+    };
 
     return (
         <>
@@ -140,56 +118,75 @@ export default function SubscriptionPage() {
                     </div>
 
                     {/* Pricing Cards */}
-                    <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-8">
-                        {plans.map((plan) => (
-                            <div
-                                key={plan.name}
-                                className={`relative rounded-3xl p-8 border hover:-translate-y-2 transition-transform duration-300 flex flex-col ${plan.popular
-                                        ? 'bg-white border-mocha-200 shadow-xl ring-2 ring-mocha-500/20'
-                                        : 'bg-white border-gray-100 shadow-lg'
-                                    }`}
-                            >
-                                {plan.popular && (
-                                    <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-mocha-600 text-white px-4 py-1 rounded-full text-sm font-medium shadow-md">
-                                        Most Popular
+                    {loading ? (
+                        <div className="flex justify-center items-center py-20">
+                            <Loader className="w-10 h-10 text-mocha-500 animate-spin" />
+                        </div>
+                    ) : (
+                        <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-8">
+                            {plans.map((plan) => {
+                                const Icon = getPlanIcon(plan.name);
+                                const style = getPlanColors(plan.name);
+                                const isPopular = plan.name === 'Growth'; // Hardcoded popular logic for now
+
+                                return (
+                                    <div
+                                        key={plan.id}
+                                        className={`relative rounded-3xl p-8 border hover:-translate-y-2 transition-transform duration-300 flex flex-col ${isPopular
+                                            ? 'bg-white border-mocha-200 shadow-xl ring-2 ring-mocha-500/20'
+                                            : 'bg-white border-gray-100 shadow-lg'
+                                            }`}
+                                    >
+                                        {isPopular && (
+                                            <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-mocha-600 text-white px-4 py-1 rounded-full text-sm font-medium shadow-md">
+                                                Most Popular
+                                            </div>
+                                        )}
+
+                                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-6 ${style.color}`}>
+                                            <Icon className={`w-6 h-6 ${style.text}`} />
+                                        </div>
+
+                                        <h3 className="text-xl font-bold text-gray-900 mb-2">{plan.name}</h3>
+                                        <p className="text-sm text-gray-500 mb-6 min-h-[40px] opacity-80">
+                                            Limits: {plan.maxStores} Store(s), {plan.maxProducts} Products
+                                        </p>
+
+                                        <div className="mb-8">
+                                            <span className="text-4xl font-bold text-gray-900">
+                                                ₱{billingCycle === 'yearly' ? (plan.price * 12 * 0.8 / 12).toFixed(0) : plan.price}
+                                            </span>
+                                            <span className="text-gray-500">/month</span>
+                                            {billingCycle === 'yearly' && (
+                                                <p className="text-xs text-mocha-600 mt-1">Billed ₱{(plan.price * 12 * 0.8).toFixed(0)} yearly</p>
+                                            )}
+                                        </div>
+
+                                        <ul className="space-y-4 mb-8 flex-1">
+                                            {plan.features.map((feature: string, i: number) => (
+                                                <li key={i} className="flex items-start gap-3 text-sm text-gray-600">
+                                                    <Check className="w-5 h-5 text-green-500 shrink-0" />
+                                                    <span>{feature}</span>
+                                                </li>
+                                            ))}
+                                            {/* Transaction Fee */}
+                                            <li className="flex items-start gap-3 text-sm text-gray-600">
+                                                <Check className="w-5 h-5 text-green-500 shrink-0" />
+                                                <span>{plan.transactionFee}% Transaction Fee</span>
+                                            </li>
+                                        </ul>
+
+                                        <button
+                                            onClick={() => handleSubscribe(plan.name)}
+                                            className={`w-full py-3 rounded-xl font-semibold transition-colors ${style.btn}`}
+                                        >
+                                            {plan.price === 0 ? 'Get Started' : 'Subscribe Now'}
+                                        </button>
                                     </div>
-                                )}
-
-                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-6 ${plan.color}`}>
-                                    <plan.icon className={`w-6 h-6 ${plan.textColor}`} />
-                                </div>
-
-                                <h3 className="text-xl font-bold text-gray-900 mb-2">{plan.name}</h3>
-                                <p className="text-sm text-gray-500 mb-6 min-h-[40px]">{plan.description}</p>
-
-                                <div className="mb-8">
-                                    <span className="text-4xl font-bold text-gray-900">
-                                        ₱{billingCycle === 'yearly' ? (plan.price * 12 * 0.8 / 12).toFixed(0) : plan.price}
-                                    </span>
-                                    <span className="text-gray-500">/month</span>
-                                    {billingCycle === 'yearly' && (
-                                        <p className="text-xs text-mocha-600 mt-1">Billed ₱{(plan.price * 12 * 0.8).toFixed(0)} yearly</p>
-                                    )}
-                                </div>
-
-                                <ul className="space-y-4 mb-8 flex-1">
-                                    {plan.features.map((feature, i) => (
-                                        <li key={i} className="flex items-start gap-3 text-sm text-gray-600">
-                                            <Check className="w-5 h-5 text-green-500 shrink-0" />
-                                            <span>{feature}</span>
-                                        </li>
-                                    ))}
-                                </ul>
-
-                                <button
-                                    onClick={() => handleSubscribe(plan.name)}
-                                    className={`w-full py-3 rounded-xl font-semibold transition-colors ${plan.btnColor}`}
-                                >
-                                    {plan.price === 0 ? 'Get Started' : 'Subscribe Now'}
-                                </button>
-                            </div>
-                        ))}
-                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
 
                     {/* FAQ or Additional Info */}
                     <div className="mt-20 text-center">

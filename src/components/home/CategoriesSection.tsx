@@ -6,7 +6,8 @@ import {
     Smartphone, Shirt, Home, Sparkles, Dumbbell, BookOpen,
     Coffee, Gamepad2, ArrowRight
 } from 'lucide-react';
-import { mockCategories } from '@/data/mockup';
+import { supabase } from '@/lib/supabase';
+import { Category } from '@/types';
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
     Smartphone, Shirt, Home, Sparkles, Dumbbell, BookOpen, Coffee, Gamepad2
@@ -24,11 +25,49 @@ const categoryColors = [
 export default function CategoriesSection() {
     const scrollRef = useRef<HTMLDivElement>(null);
     const [isPaused, setIsPaused] = useState(false);
-
-    // Duplicate categories for seamless loop
-    const categories = [...mockCategories, ...mockCategories];
+    const [categories, setCategories] = useState<Category[]>([]);
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        async function fetchCategories() {
+            try {
+                const { data, error } = await supabase
+                    .from('categories')
+                    .select('*');
+
+                if (error) {
+                    console.error('Error fetching categories:', error);
+                    return;
+                }
+
+                if (data) {
+                    const mappedCategories: Category[] = data.map((item: any) => ({
+                        id: item.id,
+                        name: item.name,
+                        slug: item.slug,
+                        icon: item.icon,
+                        image: item.image,
+                        description: item.description,
+                        productCount: item.product_count,
+                    }));
+                    setCategories(mappedCategories);
+                }
+            } catch (err) {
+                console.error(err);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        fetchCategories();
+    }, []);
+
+    // Duplicate categories for seamless loop if enough categories exist
+    const displayCategories = categories.length > 5 ? [...categories, ...categories] : categories;
+
+    useEffect(() => {
+        if (displayCategories.length === 0) return;
+
         const scrollContainer = scrollRef.current;
         if (!scrollContainer) return;
 
@@ -37,10 +76,9 @@ export default function CategoriesSection() {
         const scrollSpeed = 0.5; // pixels per frame
 
         const animate = () => {
-            if (!isPaused && scrollContainer) {
+            if (!isPaused && scrollContainer && displayCategories.length > 5) {
                 scrollPosition += scrollSpeed;
 
-                // Reset when reached half (original set)
                 const halfWidth = scrollContainer.scrollWidth / 2;
                 if (scrollPosition >= halfWidth) {
                     scrollPosition = 0;
@@ -53,7 +91,11 @@ export default function CategoriesSection() {
 
         animationId = requestAnimationFrame(animate);
         return () => cancelAnimationFrame(animationId);
-    }, [isPaused]);
+    }, [isPaused, displayCategories]);
+
+    if (loading) {
+        return null;
+    }
 
     return (
         <section className="py-12 bg-gradient-to-b from-cloud-200 to-cloud-100">
@@ -85,7 +127,7 @@ export default function CategoriesSection() {
                     onMouseLeave={() => setIsPaused(false)}
                     style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
                 >
-                    {categories.map((category, i) => {
+                    {displayCategories.map((category, i) => {
                         const Icon = iconMap[category.icon] || Smartphone;
                         const colorIndex = i % categoryColors.length;
                         return (

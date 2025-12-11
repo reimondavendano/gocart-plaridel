@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Star, Search, MapPin, Package, TrendingUp, Filter, ChevronRight, Store as StoreIcon } from 'lucide-react';
-import { mockStores, Store } from '@/data/mockup';
+import { Star, Search, MapPin, Package, TrendingUp, Filter, Store as StoreIcon } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
+import { Store } from '@/types';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import CartDrawer from '@/components/cart/CartDrawer';
@@ -13,13 +14,56 @@ import ToastContainer from '@/components/ui/Toast';
 export default function StoresPage() {
     const [searchQuery, setSearchQuery] = useState('');
     const [sortBy, setSortBy] = useState<'rating' | 'products' | 'sales'>('rating');
+    const [stores, setStores] = useState<Store[]>([]);
+    const [loading, setLoading] = useState(true);
 
-    const approvedStores = mockStores.filter(store => store.status === 'approved');
+    useEffect(() => {
+        async function fetchStores() {
+            try {
+                const { data, error } = await supabase
+                    .from('stores')
+                    .select('*')
+                    .eq('status', 'approved');
 
-    const filteredStores = approvedStores
+                if (error) {
+                    console.error('Error fetching stores:', error);
+                    return;
+                }
+
+                if (data) {
+                    const mappedStores: Store[] = data.map((item: any) => ({
+                        id: item.id,
+                        sellerId: item.seller_id,
+                        name: item.name,
+                        slug: item.slug,
+                        description: item.description,
+                        logo: item.logo || '/placeholder-logo.jpg',
+                        banner: item.banner || '/placeholder-banner.jpg',
+                        addressId: item.address_id,
+                        status: item.status,
+                        rating: item.rating,
+                        totalReviews: item.total_reviews,
+                        totalProducts: item.total_products,
+                        totalSales: item.total_sales,
+                        createdAt: item.created_at,
+                        updatedAt: item.updated_at,
+                    }));
+                    setStores(mappedStores);
+                }
+            } catch (err) {
+                console.error(err);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        fetchStores();
+    }, []);
+
+    const filteredStores = stores
         .filter(store =>
             store.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            store.description.toLowerCase().includes(searchQuery.toLowerCase())
+            store.description?.toLowerCase().includes(searchQuery.toLowerCase())
         )
         .sort((a, b) => {
             switch (sortBy) {
@@ -28,7 +72,7 @@ export default function StoresPage() {
                 case 'products':
                     return b.totalProducts - a.totalProducts;
                 case 'sales':
-                    return b.totalSales - a.totalSales;
+                    return (b.totalSales || 0) - (a.totalSales || 0);
                 default:
                     return 0;
             }
@@ -67,24 +111,24 @@ export default function StoresPage() {
                     <div className="glass-card rounded-2xl p-6 mb-8">
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                             <div className="text-center">
-                                <p className="text-3xl font-bold text-mocha-800">{approvedStores.length}</p>
+                                <p className="text-3xl font-bold text-mocha-800">{stores.length}</p>
                                 <p className="text-sm text-mocha-500">Active Stores</p>
                             </div>
                             <div className="text-center">
                                 <p className="text-3xl font-bold text-mocha-800">
-                                    {approvedStores.reduce((acc, s) => acc + s.totalProducts, 0)}
+                                    {stores.reduce((acc, s) => acc + s.totalProducts, 0)}
                                 </p>
                                 <p className="text-sm text-mocha-500">Total Products</p>
                             </div>
                             <div className="text-center">
                                 <p className="text-3xl font-bold text-mocha-800">
-                                    {(approvedStores.reduce((acc, s) => acc + s.rating, 0) / approvedStores.length).toFixed(1)}
+                                    {stores.length > 0 ? (stores.reduce((acc, s) => acc + s.rating, 0) / stores.length).toFixed(1) : '0.0'}
                                 </p>
                                 <p className="text-sm text-mocha-500">Avg Rating</p>
                             </div>
                             <div className="text-center">
                                 <p className="text-3xl font-bold text-mocha-800">
-                                    {approvedStores.reduce((acc, s) => acc + s.totalSales, 0).toLocaleString()}
+                                    {stores.reduce((acc, s) => acc + (s.totalSales || 0), 0).toLocaleString()}
                                 </p>
                                 <p className="text-sm text-mocha-500">Total Sales</p>
                             </div>
@@ -111,78 +155,82 @@ export default function StoresPage() {
                     </div>
 
                     {/* Stores Grid */}
-                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {filteredStores.map((store) => (
-                            <Link
-                                key={store.id}
-                                href={`/store/${store.slug}`}
-                                className="group"
-                            >
-                                <div className="glass-card rounded-2xl overflow-hidden card-hover">
-                                    {/* Banner */}
-                                    <div className="relative h-32 overflow-hidden">
-                                        <img
-                                            src={store.banner}
-                                            alt={store.name}
-                                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                                        />
-                                        <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
-                                    </div>
-
-                                    {/* Store Info */}
-                                    <div className="p-5 relative">
-                                        {/* Logo */}
-                                        <div className="absolute -top-8 left-5">
-                                            <div className="w-16 h-16 rounded-xl overflow-hidden border-4 border-white shadow-lg bg-white">
-                                                <img
-                                                    src={store.logo}
-                                                    alt={store.name}
-                                                    className="w-full h-full object-cover"
-                                                />
-                                            </div>
+                    {loading ? (
+                        <div className="text-center py-20 text-mocha-500">Loading stores...</div>
+                    ) : (
+                        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {filteredStores.map((store) => (
+                                <Link
+                                    key={store.id}
+                                    href={`/store/${store.slug}`}
+                                    className="group"
+                                >
+                                    <div className="glass-card rounded-2xl overflow-hidden card-hover">
+                                        {/* Banner */}
+                                        <div className="relative h-32 overflow-hidden">
+                                            <img
+                                                src={store.banner}
+                                                alt={store.name}
+                                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                            />
+                                            <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
                                         </div>
 
-                                        <div className="pt-8">
-                                            <h3 className="text-lg font-bold text-mocha-900 group-hover:text-mocha-600 transition-colors mb-1">
-                                                {store.name}
-                                            </h3>
-                                            <p className="text-sm text-mocha-500 line-clamp-2 mb-4">
-                                                {store.description}
-                                            </p>
-
-                                            {/* Stats */}
-                                            <div className="flex items-center justify-between text-sm">
-                                                <div className="flex items-center gap-1 text-mocha-700">
-                                                    <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
-                                                    <span className="font-medium">{store.rating}</span>
-                                                    <span className="text-mocha-400">({store.totalReviews})</span>
-                                                </div>
-                                                <div className="flex items-center gap-1 text-mocha-600">
-                                                    <Package className="w-4 h-4" />
-                                                    <span>{store.totalProducts} products</span>
+                                        {/* Store Info */}
+                                        <div className="p-5 relative">
+                                            {/* Logo */}
+                                            <div className="absolute -top-8 left-5">
+                                                <div className="w-16 h-16 rounded-xl overflow-hidden border-4 border-white shadow-lg bg-white">
+                                                    <img
+                                                        src={store.logo}
+                                                        alt={store.name}
+                                                        className="w-full h-full object-cover"
+                                                    />
                                                 </div>
                                             </div>
 
-                                            {/* Sales Badge */}
-                                            <div className="mt-4 flex items-center gap-2 text-xs">
-                                                <span className="px-2 py-1 rounded-full bg-green-100 text-green-700 font-medium">
-                                                    <TrendingUp className="w-3 h-3 inline mr-1" />
-                                                    {store.totalSales.toLocaleString()} sales
-                                                </span>
-                                                <span className="px-2 py-1 rounded-full bg-mocha-100 text-mocha-700 font-medium">
-                                                    <MapPin className="w-3 h-3 inline mr-1" />
-                                                    Plaridel
-                                                </span>
+                                            <div className="pt-8">
+                                                <h3 className="text-lg font-bold text-mocha-900 group-hover:text-mocha-600 transition-colors mb-1">
+                                                    {store.name}
+                                                </h3>
+                                                <p className="text-sm text-mocha-500 line-clamp-2 mb-4">
+                                                    {store.description}
+                                                </p>
+
+                                                {/* Stats */}
+                                                <div className="flex items-center justify-between text-sm">
+                                                    <div className="flex items-center gap-1 text-mocha-700">
+                                                        <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                                                        <span className="font-medium">{store.rating}</span>
+                                                        <span className="text-mocha-400">({store.totalReviews || 0})</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1 text-mocha-600">
+                                                        <Package className="w-4 h-4" />
+                                                        <span>{store.totalProducts} products</span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Sales Badge */}
+                                                <div className="mt-4 flex items-center gap-2 text-xs">
+                                                    <span className="px-2 py-1 rounded-full bg-green-100 text-green-700 font-medium">
+                                                        <TrendingUp className="w-3 h-3 inline mr-1" />
+                                                        {(store.totalSales || 0).toLocaleString()} sales
+                                                    </span>
+                                                    <span className="px-2 py-1 rounded-full bg-mocha-100 text-mocha-700 font-medium">
+                                                        <MapPin className="w-3 h-3 inline mr-1" />
+                                                        Plaridel
+                                                    </span>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
-                                </div>
-                            </Link>
-                        ))}
-                    </div>
+                                </Link>
+                            ))}
+                        </div>
+                    )}
 
                     {/* Empty State */}
-                    {filteredStores.length === 0 && (
+                    {!loading && filteredStores.length === 0 && (
                         <div className="glass-card rounded-2xl p-12 text-center">
                             <StoreIcon className="w-16 h-16 text-mocha-300 mx-auto mb-4" />
                             <h3 className="text-xl font-bold text-mocha-900 mb-2">No Stores Found</h3>

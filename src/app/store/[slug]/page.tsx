@@ -1,14 +1,13 @@
 'use client';
 
-import { useState } from 'react';
-import { useParams } from 'next/navigation';
-import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useParams, notFound } from 'next/navigation';
 import {
-    MapPin, Star, Package, TrendingUp, Calendar, CheckCircle,
-    MessageCircle, User, ThumbsUp
+    MapPin, Star, Package, TrendingUp, CheckCircle,
+    MessageCircle, User
 } from 'lucide-react';
-import { mockStores, mockProducts, mockRatings } from '@/data/mockup';
+import { supabase } from '@/lib/supabase';
+import { Store, Product } from '@/types';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import CartDrawer from '@/components/cart/CartDrawer';
@@ -23,8 +22,96 @@ export default function StorePage() {
     const [sortBy, setSortBy] = useState('newest');
     const [filterCategory, setFilterCategory] = useState('all');
 
-    const store = mockStores.find((s) => s.slug === slug);
-    const products = store ? mockProducts.filter((p) => p.storeId === store.id) : [];
+    const [store, setStore] = useState<Store | null>(null);
+    const [products, setProducts] = useState<Product[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        async function fetchStoreData() {
+            try {
+                // Fetch Store
+                const { data: storeData, error: storeError } = await supabase
+                    .from('stores')
+                    .select('*')
+                    .eq('slug', slug)
+                    .single();
+
+                if (storeError || !storeData) {
+                    console.error('Store not found', storeError);
+                    setLoading(false);
+                    return;
+                }
+
+                const mappedStore: Store = {
+                    id: storeData.id,
+                    sellerId: storeData.seller_id,
+                    name: storeData.name,
+                    slug: storeData.slug,
+                    description: storeData.description,
+                    logo: storeData.logo || '/placeholder-logo.jpg',
+                    banner: storeData.banner || '/placeholder-banner.jpg',
+                    addressId: storeData.address_id,
+                    status: storeData.status,
+                    rating: storeData.rating,
+                    totalReviews: storeData.total_reviews,
+                    totalProducts: storeData.total_products,
+                    totalSales: storeData.total_sales,
+                    createdAt: storeData.created_at,
+                    updatedAt: storeData.updated_at,
+                };
+                setStore(mappedStore);
+
+                // Fetch Products for Store
+                const { data: productsData, error: productsError } = await supabase
+                    .from('products')
+                    .select('*, stores(name)')
+                    .eq('store_id', mappedStore.id);
+
+                if (productsData) {
+                    // Map snake_case to camelCase including joined store name
+                    const mappedProducts: Product[] = productsData.map((item: any) => ({
+                        id: item.id,
+                        storeId: item.store_id,
+                        storeName: item.stores?.name || mappedStore.name,
+                        name: item.name,
+                        slug: item.slug,
+                        description: item.description,
+                        price: item.price,
+                        comparePrice: item.compare_price,
+                        images: item.images || [],
+                        category: item.category_slug, // Assuming simple mapping for now
+                        stock: item.stock,
+                        inStock: item.in_stock,
+                        rating: item.rating,
+                        reviewCount: item.review_count,
+                        tags: item.tags || [],
+                        isFeatured: item.is_featured,
+                        isNew: item.is_new,
+                        aiGenerated: item.ai_generated,
+                        createdAt: item.created_at,
+                        updatedAt: item.updated_at,
+                    }));
+                    setProducts(mappedProducts);
+                }
+            } catch (err) {
+                console.error(err);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        if (slug) {
+            fetchStoreData();
+        }
+    }, [slug]);
+
+    if (!loading && !store) {
+        notFound();
+    }
+
+    if (loading || !store) {
+        return <div className="min-h-screen flex items-center justify-center text-mocha-600">Loading store...</div>;
+    }
 
     // Derived lists
     const bestSellers = products.filter(p => p.rating >= 4.5 && p.reviewCount > 10).slice(0, 4);
@@ -40,16 +127,8 @@ export default function StorePage() {
             if (sortBy === 'price-low') return a.price - b.price;
             if (sortBy === 'price-high') return b.price - a.price;
             if (sortBy === 'rating') return b.rating - a.rating;
-            return 0; // newest (mock default order)
+            return 0; // newest
         });
-
-    // Get reviews for this store's products
-    const productIds = products.map(p => p.id);
-    const storeReviews = mockRatings.filter(r => productIds.includes(r.productId));
-
-    if (!store) {
-        notFound();
-    }
 
     return (
         <>
@@ -135,8 +214,8 @@ export default function StorePage() {
                                     key={tab.id}
                                     onClick={() => setActiveTab(tab.id as any)}
                                     className={`pb-4 font-medium px-2 whitespace-nowrap transition-colors border-b-2 ${activeTab === tab.id
-                                            ? 'text-mocha-600 border-mocha-600'
-                                            : 'text-gray-500 border-transparent hover:text-mocha-600'
+                                        ? 'text-mocha-600 border-mocha-600'
+                                        : 'text-gray-500 border-transparent hover:text-mocha-600'
                                         }`}
                                 >
                                     {tab.label}
@@ -304,7 +383,7 @@ export default function StorePage() {
                         <div className="max-w-4xl">
                             <div className="flex items-center justify-between mb-6">
                                 <h3 className="text-xl font-bold text-gray-900">
-                                    Reviews ({storeReviews.length})
+                                    Reviews (0)
                                 </h3>
                                 <div className="flex items-center gap-2">
                                     <div className="flex items-center gap-1 text-amber-400">
@@ -316,59 +395,14 @@ export default function StorePage() {
                             </div>
 
                             <div className="space-y-4">
-                                {storeReviews.length > 0 ? (
-                                    storeReviews.map((review) => (
-                                        <div key={review.id} className="bg-white rounded-2xl p-6 shadow-sm">
-                                            <div className="flex items-start justify-between mb-4">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-10 h-10 rounded-full bg-mocha-100 flex items-center justify-center">
-                                                        <User className="w-5 h-5 text-mocha-600" />
-                                                    </div>
-                                                    <div>
-                                                        <p className="font-medium text-gray-900">User</p>
-                                                        <div className="flex items-center gap-2 text-xs text-gray-500">
-                                                            <span>{new Date(review.createdAt).toLocaleDateString()}</span>
-                                                            <span>•</span>
-                                                            <span className="flex items-center gap-1 text-green-600">
-                                                                <CheckCircle className="w-3 h-3" />
-                                                                Verified Purchase
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center gap-0.5">
-                                                    {[...Array(5)].map((_, i) => (
-                                                        <Star
-                                                            key={i}
-                                                            className={`w-4 h-4 ${i < review.rating ? 'fill-amber-400 text-amber-400' : 'text-gray-300'}`}
-                                                        />
-                                                    ))}
-                                                </div>
-                                            </div>
-                                            <p className="text-gray-600 mb-4">{review.review}</p>
-                                            {review.images && review.images.length > 0 && (
-                                                <div className="flex gap-2 mb-4">
-                                                    {review.images.map((img, i) => (
-                                                        <img
-                                                            key={i}
-                                                            src={img}
-                                                            alt={`Review ${i}`}
-                                                            className="w-16 h-16 rounded-lg object-cover border border-gray-100"
-                                                        />
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-                                    ))
-                                ) : (
-                                    <div className="bg-white rounded-2xl p-12 text-center shadow-sm">
-                                        <MessageCircle className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                                        <h3 className="text-xl font-bold text-gray-900 mb-2">No Reviews Yet</h3>
-                                        <p className="text-gray-500">
-                                            This store hasn't received any reviews yet.
-                                        </p>
-                                    </div>
-                                )}
+                                {/* Placeholder for reviews since we haven't implemented review fetching yet */}
+                                <div className="bg-white rounded-2xl p-12 text-center shadow-sm">
+                                    <MessageCircle className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                                    <h3 className="text-xl font-bold text-gray-900 mb-2">No Reviews Yet</h3>
+                                    <p className="text-gray-500">
+                                        This store hasn't received any reviews yet.
+                                    </p>
+                                </div>
                             </div>
                         </div>
                     )}

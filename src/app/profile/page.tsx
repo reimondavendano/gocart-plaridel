@@ -12,14 +12,13 @@ import {
     ChevronRight, History
 } from 'lucide-react';
 import Link from 'next/link';
-import { mockProducts } from '@/data/mockup';
 import ProductCard from '@/components/product/ProductCard';
 
 export default function ProfilePage() {
     const { currentUser, isAuthenticated } = useAppSelector((state) => state.user);
 
-    // Mock Recent History (taking random 4 products)
-    const recentHistory = mockProducts.slice(0, 4);
+    // Placeholder for recent history - eventually integrate with backend
+    const recentHistory = [] as any[];
 
     if (!isAuthenticated || !currentUser) {
         return (
@@ -50,6 +49,8 @@ export default function ProfilePage() {
         { label: 'Cancelled', icon: RotateCcw, href: '/orders?status=cancelled' },
     ];
 
+    const isPlus = ['Growth', 'Pro', 'Enterprise'].includes(currentUser.plan?.name || '');
+
     return (
         <>
             <Header />
@@ -79,7 +80,7 @@ export default function ProfilePage() {
                                         <UserIcon className="w-3 h-3" />
                                         {currentUser.role === 'customer' ? 'Member' : 'Seller'}
                                     </span>
-                                    {currentUser.subscription === 'plus' && (
+                                    {isPlus && (
                                         <span className="flex items-center gap-1 bg-amber-500/20 text-amber-100 px-3 py-1 rounded-full border border-amber-500/50">
                                             Plus Member
                                         </span>
@@ -167,6 +168,11 @@ export default function ProfilePage() {
                             {recentHistory.map((product) => (
                                 <ProductCard key={product.id} product={product} />
                             ))}
+                            {recentHistory.length === 0 && (
+                                <div className="col-span-full text-center py-8 text-gray-500">
+                                    No recently viewed items.
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

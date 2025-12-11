@@ -4,18 +4,17 @@ import { useEffect, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Search, X, TrendingUp, Clock, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
-import { RootState } from '@/store';
+import { AppDispatch, RootState } from '@/store';
 import { setSearchOpen } from '@/store/slices/uiSlice';
-import { setSearchQuery } from '@/store/slices/productSlice';
-import { mockProducts } from '@/data/mockup';
+import { setSearchQuery, fetchProducts } from '@/store/slices/productSlice';
 
 const trendingSearches = ['Headphones', 'Smart Watch', 'Leather Jacket', 'Handbag'];
 const recentSearches = ['Wireless speaker', 'Gaming keyboard'];
 
 export default function SearchModal() {
-    const dispatch = useDispatch();
+    const dispatch = useDispatch<AppDispatch>();
     const { searchOpen } = useSelector((state: RootState) => state.ui);
-    const { searchResults, searchQuery } = useSelector((state: RootState) => state.product);
+    const { searchResults, searchQuery, featuredProducts } = useSelector((state: RootState) => state.product);
     const inputRef = useRef<HTMLInputElement>(null);
     const [localQuery, setLocalQuery] = useState('');
 
@@ -32,9 +31,16 @@ export default function SearchModal() {
         return () => clearTimeout(timer);
     }, [localQuery, dispatch]);
 
+    useEffect(() => {
+        if (featuredProducts.length === 0) {
+            dispatch(fetchProducts());
+        }
+    }, [dispatch, featuredProducts.length]);
+
     if (!searchOpen) return null;
 
-    const displayResults = searchQuery ? searchResults : mockProducts.slice(0, 4);
+    // Use featured products as fallback if available, otherwise empty
+    const displayResults = searchQuery ? searchResults : featuredProducts.slice(0, 4);
 
     return (
         <>

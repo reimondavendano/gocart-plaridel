@@ -1,213 +1,330 @@
 'use client';
 
-import { useState } from 'react';
-import Link from 'next/link';
+import { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
 import {
-    LayoutDashboard, Users, Store, Package, Tag, ShoppingCart,
-    Settings, ChevronLeft, ChevronRight, TrendingUp, DollarSign,
-    CheckCircle, XCircle, Clock, Eye, LogOut
+    Store, Users, Package, ShoppingCart, TrendingUp, TrendingDown,
+    DollarSign, Eye, Clock, CheckCircle, XCircle, AlertTriangle,
+    ArrowUpRight, BarChart3, Activity
 } from 'lucide-react';
-import { adminDashboardStats, mockStores, mockUsers, mockCoupons, mockOrders } from '@/data/mockup';
 
-const sidebarLinks = [
-    { icon: LayoutDashboard, label: 'Dashboard', href: '/admin' },
-    { icon: Store, label: 'Stores', href: '/admin/stores' },
-    { icon: Users, label: 'Users', href: '/admin/users' },
-    { icon: Package, label: 'Products', href: '/admin/products' },
-    { icon: ShoppingCart, label: 'Orders', href: '/admin/orders' },
-    { icon: Tag, label: 'Coupons', href: '/admin/coupons' },
-    { icon: Settings, label: 'Settings', href: '/admin/settings' },
-];
+interface DashboardStats {
+    totalStores: number;
+    pendingStores: number;
+    totalSellers: number;
+    totalProducts: number;
+    totalOrders: number;
+    totalRevenue: number;
+}
+
+interface RecentStore {
+    id: string;
+    name: string;
+    seller_name: string;
+    status: string;
+    created_at: string;
+}
+
+interface RecentOrder {
+    id: string;
+    total: number;
+    status: string;
+    created_at: string;
+}
 
 export default function AdminDashboard() {
-    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-    const pendingStores = mockStores.filter(s => s.status === 'pending');
+    const [stats, setStats] = useState<DashboardStats>({
+        totalStores: 0,
+        pendingStores: 0,
+        totalSellers: 0,
+        totalProducts: 0,
+        totalOrders: 0,
+        totalRevenue: 0
+    });
+    const [recentStores, setRecentStores] = useState<RecentStore[]>([]);
+    const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        fetchDashboardData();
+    }, []);
+
+    const fetchDashboardData = async () => {
+        try {
+            // Fetch stores count
+            const { count: storesCount } = await supabase
+                .from('stores')
+                .select('*', { count: 'exact', head: true });
+
+            // Fetch pending stores count
+            const { count: pendingCount } = await supabase
+                .from('stores')
+                .select('*', { count: 'exact', head: true })
+                .eq('status', 'pending');
+
+            // Fetch sellers count
+            const { count: sellersCount } = await supabase
+                .from('users')
+                .select('*', { count: 'exact', head: true })
+                .eq('role', 'seller');
+
+            // Fetch products count
+            const { count: productsCount } = await supabase
+                .from('products')
+                .select('*', { count: 'exact', head: true });
+
+            // Fetch orders
+            const { data: ordersData, count: ordersCount } = await supabase
+                .from('orders')
+                .select('total', { count: 'exact' });
+
+            const totalRevenue = ordersData?.reduce((sum, order) => sum + (Number(order.total) || 0), 0) || 0;
+
+            setStats({
+                totalStores: storesCount || 0,
+                pendingStores: pendingCount || 0,
+                totalSellers: sellersCount || 0,
+                totalProducts: productsCount || 0,
+                totalOrders: ordersCount || 0,
+                totalRevenue
+            });
+
+            // Fetch recent stores with seller info
+            const { data: stores } = await supabase
+                .from('stores')
+                .select(`
+                    id, name, status, created_at,
+                    seller:users(name)
+                `)
+                .order('created_at', { ascending: false })
+                .limit(5);
+
+            if (stores) {
+                setRecentStores(stores.map((s: any) => ({
+                    id: s.id,
+                    name: s.name,
+                    seller_name: s.seller?.name || 'Unknown',
+                    status: s.status,
+                    created_at: s.created_at
+                })));
+            }
+
+            // Fetch recent orders
+            const { data: orders } = await supabase
+                .from('orders')
+                .select('id, total, status, created_at')
+                .order('created_at', { ascending: false })
+                .limit(5);
+
+            if (orders) {
+                setRecentOrders(orders);
+            }
+        } catch (error) {
+            console.error('Error fetching dashboard data:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const formatCurrency = (amount: number) => {
+        return new Intl.NumberFormat('en-PH', {
+            style: 'currency',
+            currency: 'PHP',
+            minimumFractionDigits: 0
+        }).format(amount);
+    };
+
+    const formatDate = (dateString: string) => {
+        return new Date(dateString).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+        });
+    };
+
+    const getStatusBadge = (status: string) => {
+        const styles: Record<string, string> = {
+            pending: 'bg-yellow-100 text-yellow-700 border-yellow-200',
+            approved: 'bg-green-100 text-green-700 border-green-200',
+            rejected: 'bg-red-100 text-red-700 border-red-200',
+            delivered: 'bg-green-100 text-green-700 border-green-200',
+            processing: 'bg-blue-100 text-blue-700 border-blue-200',
+            shipped: 'bg-purple-100 text-purple-700 border-purple-200',
+            cancelled: 'bg-red-100 text-red-700 border-red-200',
+        };
+        return styles[status] || 'bg-mocha-100 text-mocha-700 border-mocha-200';
+    };
+
+    const statCards = [
+        { label: 'Total Stores', value: stats.totalStores, icon: Store, color: 'from-mocha-500 to-mocha-600', change: '+12%' },
+        { label: 'Pending Approval', value: stats.pendingStores, icon: Clock, color: 'from-yellow-500 to-orange-500', urgent: true },
+        { label: 'Total Sellers', value: stats.totalSellers, icon: Users, color: 'from-dusk-400 to-dusk-600', change: '+8%' },
+        { label: 'Total Products', value: stats.totalProducts, icon: Package, color: 'from-blue-500 to-blue-600', change: '+24%' },
+        { label: 'Total Orders', value: stats.totalOrders, icon: ShoppingCart, color: 'from-green-500 to-green-600', change: '+15%' },
+        { label: 'Total Revenue', value: formatCurrency(stats.totalRevenue), icon: DollarSign, color: 'from-emerald-500 to-emerald-600', change: '+32%' },
+    ];
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center h-96">
+                <div className="w-8 h-8 border-2 border-mocha-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+        );
+    }
 
     return (
-        <div className="min-h-screen flex bg-cloud-200">
-            {/* Sidebar */}
-            <aside className={`${sidebarCollapsed ? 'w-20' : 'w-64'} bg-mocha-950 text-cloud-200 flex flex-col transition-all duration-300`}>
-                {/* Logo */}
-                <div className="p-4 border-b border-mocha-800 flex items-center justify-between">
-                    {!sidebarCollapsed && (
-                        <Link href="/" className="flex items-center gap-2">
-                            <div className="w-10 h-10 rounded-xl gradient-mocha flex items-center justify-center">
-                                <span className="text-white font-bold text-xl">G</span>
-                            </div>
-                            <span className="font-bold text-lg text-cloud-100">Admin Panel</span>
-                        </Link>
-                    )}
-                    <button
-                        onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                        className="p-2 rounded-lg hover:bg-mocha-800 transition-colors ml-auto"
+        <div className="space-y-6">
+            {/* Page Header */}
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                    <h1 className="text-2xl font-bold text-mocha-900">Dashboard</h1>
+                    <p className="text-mocha-500">Welcome back! Here's what's happening with your store.</p>
+                </div>
+                <div className="flex items-center gap-3">
+                    <select className="bg-white border border-mocha-200 rounded-xl px-4 py-2 text-mocha-700 text-sm focus:outline-none focus:border-mocha-400 shadow-sm">
+                        <option>Last 7 days</option>
+                        <option>Last 30 days</option>
+                        <option>Last 90 days</option>
+                        <option>This year</option>
+                    </select>
+                </div>
+            </div>
+
+            {/* Stats Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {statCards.map((stat, index) => (
+                    <div
+                        key={index}
+                        className="bg-white border border-mocha-200 rounded-2xl p-5 hover:shadow-lg transition-all shadow-sm"
                     >
-                        {sidebarCollapsed ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
-                    </button>
-                </div>
-
-                {/* Navigation */}
-                <nav className="flex-1 py-6">
-                    {sidebarLinks.map((link) => (
-                        <Link
-                            key={link.href}
-                            href={link.href}
-                            className="flex items-center gap-3 px-4 py-3 text-mocha-400 hover:text-cloud-100 hover:bg-mocha-800 transition-colors"
-                        >
-                            <link.icon className="w-5 h-5 flex-shrink-0" />
-                            {!sidebarCollapsed && <span>{link.label}</span>}
-                        </Link>
-                    ))}
-                </nav>
-
-                {/* Logout */}
-                <div className="p-4 border-t border-mocha-800">
-                    <Link href="/" className="flex items-center gap-3 text-mocha-400 hover:text-red-400 transition-colors">
-                        <LogOut className="w-5 h-5" />
-                        {!sidebarCollapsed && <span>Back to Store</span>}
-                    </Link>
-                </div>
-            </aside>
-
-            {/* Main Content */}
-            <div className="flex-1 flex flex-col">
-                {/* Header */}
-                <header className="h-16 bg-white border-b border-mocha-200 flex items-center justify-between px-6">
-                    <div>
-                        <h1 className="font-bold text-mocha-900">Admin Dashboard</h1>
-                        <p className="text-sm text-mocha-500">Manage your multi-vendor platform</p>
-                    </div>
-                    <div className="flex items-center gap-4">
-                        {pendingStores.length > 0 && (
-                            <div className="px-3 py-1 rounded-full bg-amber-100 text-amber-700 text-sm font-medium">
-                                {pendingStores.length} pending approval
+                        <div className="flex items-start justify-between">
+                            <div>
+                                <p className="text-mocha-500 text-sm font-medium">{stat.label}</p>
+                                <p className="text-2xl font-bold text-mocha-900 mt-1">
+                                    {typeof stat.value === 'number' ? stat.value.toLocaleString() : stat.value}
+                                </p>
+                            </div>
+                            <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${stat.color} flex items-center justify-center shadow-lg`}>
+                                <stat.icon className="w-6 h-6 text-white" />
+                            </div>
+                        </div>
+                        {stat.change && (
+                            <div className="flex items-center gap-1 mt-3">
+                                <TrendingUp className="w-4 h-4 text-green-500" />
+                                <span className="text-green-600 text-sm font-medium">{stat.change}</span>
+                                <span className="text-mocha-400 text-sm">vs last month</span>
                             </div>
                         )}
-                        <div className="w-10 h-10 rounded-xl bg-mocha-500 flex items-center justify-center text-white font-bold">
-                            A
-                        </div>
-                    </div>
-                </header>
-
-                {/* Dashboard Content */}
-                <main className="flex-1 p-6 overflow-y-auto">
-                    {/* Stats */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                        {[
-                            { label: 'Total Revenue', value: `₱${(adminDashboardStats.totalRevenue / 1000000).toFixed(1)}M`, icon: DollarSign, color: 'bg-green-500', change: '+12%' },
-                            { label: 'Total Orders', value: adminDashboardStats.totalOrders.toLocaleString(), icon: ShoppingCart, color: 'bg-blue-500', change: '+8%' },
-                            { label: 'Total Products', value: adminDashboardStats.totalProducts, icon: Package, color: 'bg-purple-500', change: '+15%' },
-                            { label: 'Total Users', value: adminDashboardStats.totalUsers.toLocaleString(), icon: Users, color: 'bg-amber-500', change: '+23%' },
-                        ].map((stat, i) => (
-                            <div key={i} className="glass-card rounded-2xl p-6">
-                                <div className="flex items-center justify-between mb-4">
-                                    <div className={`w-12 h-12 rounded-xl ${stat.color} flex items-center justify-center`}>
-                                        <stat.icon className="w-6 h-6 text-white" />
-                                    </div>
-                                    <div className="flex items-center gap-1 text-green-500 text-sm font-medium">
-                                        <TrendingUp className="w-4 h-4" />
-                                        {stat.change}
-                                    </div>
-                                </div>
-                                <p className="text-2xl font-bold text-mocha-900">{stat.value}</p>
-                                <p className="text-mocha-500">{stat.label}</p>
+                        {stat.urgent && stats.pendingStores > 0 && (
+                            <div className="flex items-center gap-1 mt-3">
+                                <AlertTriangle className="w-4 h-4 text-yellow-500" />
+                                <span className="text-yellow-600 text-sm font-medium">Requires attention</span>
                             </div>
-                        ))}
+                        )}
                     </div>
+                ))}
+            </div>
 
-                    <div className="grid lg:grid-cols-3 gap-6">
-                        {/* Pending Stores */}
-                        <div className="lg:col-span-2 glass-card rounded-2xl p-6">
-                            <div className="flex items-center justify-between mb-6">
-                                <h3 className="font-bold text-mocha-900">Pending Store Approvals</h3>
-                                <Link href="/admin/stores" className="text-mocha-500 hover:text-mocha-600 text-sm">View All</Link>
+            {/* Recent Activity */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Recent Stores */}
+                <div className="bg-white border border-mocha-200 rounded-2xl overflow-hidden shadow-sm">
+                    <div className="flex items-center justify-between p-5 border-b border-mocha-100">
+                        <h2 className="text-lg font-semibold text-mocha-900">Recent Store Applications</h2>
+                        <a href="/admin/stores" className="text-mocha-500 hover:text-mocha-700 text-sm flex items-center gap-1">
+                            View all <ArrowUpRight className="w-4 h-4" />
+                        </a>
+                    </div>
+                    <div className="divide-y divide-mocha-100">
+                        {recentStores.length === 0 ? (
+                            <div className="p-8 text-center text-mocha-500">
+                                No store applications yet
                             </div>
-                            {pendingStores.length > 0 ? (
-                                <div className="space-y-4">
-                                    {pendingStores.map((store) => (
-                                        <div key={store.id} className="flex items-center justify-between p-4 rounded-xl bg-cloud-100">
-                                            <div className="flex items-center gap-4">
-                                                <div className="w-12 h-12 rounded-xl bg-mocha-200 flex items-center justify-center overflow-hidden">
-                                                    <img src={store.logo} alt={store.name} className="w-10 h-10" />
-                                                </div>
-                                                <div>
-                                                    <p className="font-medium text-mocha-900">{store.name}</p>
-                                                    <p className="text-sm text-mocha-500 line-clamp-1">{store.description}</p>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <button className="p-2 rounded-xl bg-green-100 text-green-600 hover:bg-green-200">
-                                                    <CheckCircle className="w-5 h-5" />
-                                                </button>
-                                                <button className="p-2 rounded-xl bg-red-100 text-red-600 hover:bg-red-200">
-                                                    <XCircle className="w-5 h-5" />
-                                                </button>
-                                                <button className="p-2 rounded-xl bg-mocha-100 text-mocha-600 hover:bg-mocha-200">
-                                                    <Eye className="w-5 h-5" />
-                                                </button>
-                                            </div>
+                        ) : (
+                            recentStores.map((store) => (
+                                <div key={store.id} className="p-4 hover:bg-mocha-50 transition-colors">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <p className="font-medium text-mocha-900">{store.name}</p>
+                                            <p className="text-sm text-mocha-500">by {store.seller_name}</p>
                                         </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="text-center py-8 text-mocha-500">
-                                    No pending store approvals
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Recent Activity */}
-                        <div className="glass-card rounded-2xl p-6">
-                            <h3 className="font-bold text-mocha-900 mb-6">Recent Activity</h3>
-                            <div className="space-y-4">
-                                {[
-                                    { text: 'New order placed', time: '2 mins ago', icon: ShoppingCart, color: 'bg-blue-100 text-blue-600' },
-                                    { text: 'New user registered', time: '15 mins ago', icon: Users, color: 'bg-green-100 text-green-600' },
-                                    { text: 'Store approved', time: '1 hour ago', icon: Store, color: 'bg-purple-100 text-purple-600' },
-                                    { text: 'Coupon created', time: '2 hours ago', icon: Tag, color: 'bg-amber-100 text-amber-600' },
-                                    { text: 'Product added', time: '3 hours ago', icon: Package, color: 'bg-pink-100 text-pink-600' },
-                                ].map((activity, i) => (
-                                    <div key={i} className="flex items-center gap-3">
-                                        <div className={`w-10 h-10 rounded-xl ${activity.color} flex items-center justify-center`}>
-                                            <activity.icon className="w-5 h-5" />
-                                        </div>
-                                        <div className="flex-1">
-                                            <p className="text-mocha-900 text-sm">{activity.text}</p>
-                                            <p className="text-xs text-mocha-400">{activity.time}</p>
+                                        <div className="text-right">
+                                            <span className={`inline-block px-2.5 py-1 rounded-lg text-xs font-medium border ${getStatusBadge(store.status)}`}>
+                                                {store.status.charAt(0).toUpperCase() + store.status.slice(1)}
+                                            </span>
+                                            <p className="text-xs text-mocha-400 mt-1">{formatDate(store.created_at)}</p>
                                         </div>
                                     </div>
-                                ))}
-                            </div>
-                        </div>
+                                </div>
+                            ))
+                        )}
                     </div>
+                </div>
 
-                    {/* Active Coupons */}
-                    <div className="mt-6 glass-card rounded-2xl p-6">
-                        <div className="flex items-center justify-between mb-6">
-                            <h3 className="font-bold text-mocha-900">Active Coupons</h3>
-                            <Link href="/admin/coupons" className="text-mocha-500 hover:text-mocha-600 text-sm">Manage Coupons</Link>
-                        </div>
-                        <div className="grid md:grid-cols-3 gap-4">
-                            {mockCoupons.map((coupon) => (
-                                <div key={coupon.id} className="p-4 rounded-xl bg-gradient-to-br from-mocha-100 to-cloud-100 border border-mocha-200">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <span className="font-mono font-bold text-mocha-800">{coupon.code}</span>
-                                        {coupon.forPlusOnly && (
-                                            <span className="badge-plus text-[10px]">PLUS</span>
-                                        )}
-                                    </div>
-                                    <p className="text-sm text-mocha-500 mb-2">{coupon.description}</p>
-                                    <div className="flex items-center justify-between text-xs text-mocha-400">
-                                        <span>{coupon.usedCount}/{coupon.usageLimit} used</span>
-                                        <span className="flex items-center gap-1">
-                                            <Clock className="w-3 h-3" />
-                                            {new Date(coupon.expiresAt).toLocaleDateString()}
-                                        </span>
+                {/* Recent Orders */}
+                <div className="bg-white border border-mocha-200 rounded-2xl overflow-hidden shadow-sm">
+                    <div className="flex items-center justify-between p-5 border-b border-mocha-100">
+                        <h2 className="text-lg font-semibold text-mocha-900">Recent Orders</h2>
+                        <a href="/admin/orders" className="text-mocha-500 hover:text-mocha-700 text-sm flex items-center gap-1">
+                            View all <ArrowUpRight className="w-4 h-4" />
+                        </a>
+                    </div>
+                    <div className="divide-y divide-mocha-100">
+                        {recentOrders.length === 0 ? (
+                            <div className="p-8 text-center text-mocha-500">
+                                No orders yet
+                            </div>
+                        ) : (
+                            recentOrders.map((order) => (
+                                <div key={order.id} className="p-4 hover:bg-mocha-50 transition-colors">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <p className="font-medium text-mocha-900">#{order.id.slice(0, 8)}</p>
+                                            <p className="text-sm text-mocha-500">{formatDate(order.created_at)}</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="font-semibold text-mocha-900">{formatCurrency(order.total)}</p>
+                                            <span className={`inline-block px-2.5 py-1 rounded-lg text-xs font-medium border mt-1 ${getStatusBadge(order.status)}`}>
+                                                {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                                            </span>
+                                        </div>
                                     </div>
                                 </div>
-                            ))}
-                        </div>
+                            ))
+                        )}
                     </div>
-                </main>
+                </div>
+            </div>
+
+            {/* Quick Actions */}
+            <div className="bg-white border border-mocha-200 rounded-2xl p-6 shadow-sm">
+                <h2 className="text-lg font-semibold text-mocha-900 mb-4">Quick Actions</h2>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <a href="/admin/stores?status=pending" className="flex flex-col items-center gap-2 p-4 rounded-xl bg-mocha-50 hover:bg-mocha-100 border border-mocha-200 transition-colors group">
+                        <div className="w-12 h-12 rounded-xl bg-yellow-100 flex items-center justify-center group-hover:bg-yellow-200 transition-colors">
+                            <Clock className="w-6 h-6 text-yellow-600" />
+                        </div>
+                        <span className="text-sm font-medium text-mocha-700">Review Stores</span>
+                    </a>
+                    <a href="/admin/products" className="flex flex-col items-center gap-2 p-4 rounded-xl bg-mocha-50 hover:bg-mocha-100 border border-mocha-200 transition-colors group">
+                        <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center group-hover:bg-blue-200 transition-colors">
+                            <Package className="w-6 h-6 text-blue-600" />
+                        </div>
+                        <span className="text-sm font-medium text-mocha-700">Manage Products</span>
+                    </a>
+                    <a href="/admin/orders" className="flex flex-col items-center gap-2 p-4 rounded-xl bg-mocha-50 hover:bg-mocha-100 border border-mocha-200 transition-colors group">
+                        <div className="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center group-hover:bg-green-200 transition-colors">
+                            <ShoppingCart className="w-6 h-6 text-green-600" />
+                        </div>
+                        <span className="text-sm font-medium text-mocha-700">View Orders</span>
+                    </a>
+                    <a href="/admin/analytics" className="flex flex-col items-center gap-2 p-4 rounded-xl bg-mocha-50 hover:bg-mocha-100 border border-mocha-200 transition-colors group">
+                        <div className="w-12 h-12 rounded-xl bg-purple-100 flex items-center justify-center group-hover:bg-purple-200 transition-colors">
+                            <BarChart3 className="w-6 h-6 text-purple-600" />
+                        </div>
+                        <span className="text-sm font-medium text-mocha-700">View Analytics</span>
+                    </a>
+                </div>
             </div>
         </div>
     );

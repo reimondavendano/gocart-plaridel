@@ -1,183 +1,334 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useAppSelector } from '@/store';
+import { supabase } from '@/lib/supabase';
 import {
-    LayoutDashboard, Package, ShoppingCart, Star, Settings,
-    LogOut, ChevronLeft, ChevronRight, TrendingUp, DollarSign,
-    Sparkles, Plus, Eye, Edit, MoreVertical, Crown
+    Package, ShoppingCart, DollarSign, TrendingUp, Eye, Clock,
+    ArrowUpRight, Star, AlertTriangle, CheckCircle, XCircle, Plus
 } from 'lucide-react';
-import { sellerDashboardStats, mockProducts, mockOrders, mockStores } from '@/data/mockup';
 
-const sidebarLinks = [
-    { icon: LayoutDashboard, label: 'Dashboard', href: '/seller' },
-    { icon: Package, label: 'Products', href: '/seller/products' },
-    { icon: ShoppingCart, label: 'Orders', href: '/seller/orders' },
-    { icon: Star, label: 'Reviews', href: '/seller/reviews' },
-    { icon: Settings, label: 'Store Settings', href: '/seller/settings' },
-];
+interface StoreData {
+    id: string;
+    name: string;
+    slug: string;
+    status: 'pending' | 'approved' | 'rejected';
+    rating: number;
+    total_reviews: number;
+    total_products: number;
+    total_sales: number;
+}
+
+interface DashboardStats {
+    totalProducts: number;
+    totalOrders: number;
+    totalRevenue: number;
+    pendingOrders: number;
+}
+
+interface RecentOrder {
+    id: string;
+    total: number;
+    status: string;
+    created_at: string;
+}
 
 export default function SellerDashboard() {
-    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-    const store = mockStores[0];
-    const storeProducts = mockProducts.filter(p => p.storeId === store.id);
-    const storeOrders = mockOrders.filter(o => o.storeId === store.id);
+    const { currentUser } = useAppSelector((state) => state.user);
+    const [store, setStore] = useState<StoreData | null>(null);
+    const [stats, setStats] = useState<DashboardStats>({
+        totalProducts: 0,
+        totalOrders: 0,
+        totalRevenue: 0,
+        pendingOrders: 0
+    });
+    const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        if (currentUser?.id) {
+            fetchDashboardData();
+        }
+    }, [currentUser?.id]);
+
+    const fetchDashboardData = async () => {
+        try {
+            // Fetch seller's store
+            const { data: storeData } = await supabase
+                .from('stores')
+                .select('*')
+                .eq('seller_id', currentUser?.id)
+                .single();
+
+            if (storeData) {
+                setStore(storeData);
+
+                // Fetch products count
+                const { count: productsCount } = await supabase
+                    .from('products')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('store_id', storeData.id);
+
+                // Fetch orders for this store
+                const { data: ordersData, count: ordersCount } = await supabase
+                    .from('orders')
+                    .select('total, status', { count: 'exact' })
+                    .eq('store_id', storeData.id);
+
+                const totalRevenue = ordersData?.reduce((sum, order) => sum + (Number(order.total) || 0), 0) || 0;
+                const pendingOrders = ordersData?.filter(o => o.status === 'pending').length || 0;
+
+                setStats({
+                    totalProducts: productsCount || 0,
+                    totalOrders: ordersCount || 0,
+                    totalRevenue,
+                    pendingOrders
+                });
+
+                // Fetch recent orders
+                const { data: recent } = await supabase
+                    .from('orders')
+                    .select('id, total, status, created_at')
+                    .eq('store_id', storeData.id)
+                    .order('created_at', { ascending: false })
+                    .limit(5);
+
+                if (recent) {
+                    setRecentOrders(recent);
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching dashboard data:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const formatCurrency = (amount: number) => {
+        return new Intl.NumberFormat('en-PH', {
+            style: 'currency',
+            currency: 'PHP',
+            minimumFractionDigits: 0
+        }).format(amount);
+    };
+
+    const formatDate = (dateString: string) => {
+        return new Date(dateString).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+        });
+    };
+
+    const getStatusBadge = (status: string) => {
+        const styles: Record<string, { bg: string; text: string; icon: React.ReactNode }> = {
+            pending: { bg: 'bg-yellow-100', text: 'text-yellow-700', icon: <Clock className="w-3.5 h-3.5" /> },
+            approved: { bg: 'bg-green-100', text: 'text-green-700', icon: <CheckCircle className="w-3.5 h-3.5" /> },
+            rejected: { bg: 'bg-red-100', text: 'text-red-700', icon: <XCircle className="w-3.5 h-3.5" /> },
+            processing: { bg: 'bg-blue-100', text: 'text-blue-700', icon: <Clock className="w-3.5 h-3.5" /> },
+            shipped: { bg: 'bg-purple-100', text: 'text-purple-700', icon: <Package className="w-3.5 h-3.5" /> },
+            delivered: { bg: 'bg-green-100', text: 'text-green-700', icon: <CheckCircle className="w-3.5 h-3.5" /> },
+        };
+        const style = styles[status] || styles.pending;
+        return (
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium ${style.bg} ${style.text}`}>
+                {style.icon}
+                {status.charAt(0).toUpperCase() + status.slice(1)}
+            </span>
+        );
+    };
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center h-96">
+                <div className="w-8 h-8 border-2 border-mocha-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+        );
+    }
 
     return (
-        <div className="min-h-screen flex bg-cloud-200">
-            {/* Sidebar */}
-            <aside className={`${sidebarCollapsed ? 'w-20' : 'w-64'} bg-mocha-950 text-cloud-200 flex flex-col transition-all duration-300`}>
-                {/* Logo */}
-                <div className="p-4 border-b border-mocha-800 flex items-center justify-between">
-                    {!sidebarCollapsed && (
-                        <Link href="/" className="flex items-center gap-2">
-                            <div className="w-10 h-10 rounded-xl gradient-mocha flex items-center justify-center">
-                                <span className="text-white font-bold text-xl">G</span>
-                            </div>
-                            <span className="font-bold text-lg text-cloud-100">Seller Portal</span>
-                        </Link>
-                    )}
-                    <button
-                        onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                        className="p-2 rounded-lg hover:bg-mocha-800 transition-colors ml-auto"
-                    >
-                        {sidebarCollapsed ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
-                    </button>
+        <div className="space-y-6">
+            {/* Welcome Header */}
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                    <h1 className="text-2xl font-bold text-mocha-900">Welcome back, {currentUser?.name?.split(' ')[0]}!</h1>
+                    <p className="text-mocha-500">Here's what's happening with your store today.</p>
                 </div>
+                <Link
+                    href="/seller/products/new"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-mocha-500 hover:bg-mocha-600 text-white font-medium transition-colors"
+                >
+                    <Plus className="w-5 h-5" />
+                    Add New Product
+                </Link>
+            </div>
 
-                {/* Navigation */}
-                <nav className="flex-1 py-6">
-                    {sidebarLinks.map((link) => (
-                        <Link
-                            key={link.href}
-                            href={link.href}
-                            className="flex items-center gap-3 px-4 py-3 text-mocha-400 hover:text-cloud-100 hover:bg-mocha-800 transition-colors"
-                        >
-                            <link.icon className="w-5 h-5 flex-shrink-0" />
-                            {!sidebarCollapsed && <span>{link.label}</span>}
-                        </Link>
-                    ))}
-                </nav>
-
-                {/* AI Feature */}
-                {!sidebarCollapsed && (
-                    <div className="p-4 mx-4 mb-4 rounded-xl bg-gradient-to-br from-dusk-500 to-mocha-600">
-                        <div className="flex items-center gap-2 mb-2">
-                            <Sparkles className="w-5 h-5 text-white" />
-                            <span className="font-semibold text-white">AI Assistant</span>
-                        </div>
-                        <p className="text-sm text-white/80 mb-3">Generate product descriptions with AI</p>
-                        <Link href="/seller/products/new" className="block w-full py-2 text-center rounded-lg bg-white text-mocha-800 font-medium text-sm">
-                            Try AI Generation
-                        </Link>
+            {/* Store Status Banner */}
+            {store && store.status !== 'approved' && (
+                <div className={`rounded-2xl p-4 flex items-center gap-4 ${store.status === 'pending'
+                        ? 'bg-yellow-50 border border-yellow-200'
+                        : 'bg-red-50 border border-red-200'
+                    }`}>
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${store.status === 'pending' ? 'bg-yellow-100' : 'bg-red-100'
+                        }`}>
+                        <AlertTriangle className={`w-6 h-6 ${store.status === 'pending' ? 'text-yellow-600' : 'text-red-600'}`} />
                     </div>
-                )}
-
-                {/* Logout */}
-                <div className="p-4 border-t border-mocha-800">
-                    <Link href="/" className="flex items-center gap-3 text-mocha-400 hover:text-red-400 transition-colors">
-                        <LogOut className="w-5 h-5" />
-                        {!sidebarCollapsed && <span>Back to Store</span>}
+                    <div className="flex-1">
+                        <h3 className={`font-medium ${store.status === 'pending' ? 'text-yellow-800' : 'text-red-800'}`}>
+                            {store.status === 'pending' ? 'Store Pending Verification' : 'Store Rejected'}
+                        </h3>
+                        <p className={`text-sm ${store.status === 'pending' ? 'text-yellow-600' : 'text-red-600'}`}>
+                            {store.status === 'pending'
+                                ? 'Your store is currently under review. You can still add products while we verify your information.'
+                                : 'Your store application was rejected. Please contact support for more information.'}
+                        </p>
+                    </div>
+                    <Link
+                        href="/seller/store"
+                        className={`px-4 py-2 rounded-xl text-sm font-medium ${store.status === 'pending'
+                                ? 'bg-yellow-200 text-yellow-800 hover:bg-yellow-300'
+                                : 'bg-red-200 text-red-800 hover:bg-red-300'
+                            } transition-colors`}
+                    >
+                        View Details
                     </Link>
                 </div>
-            </aside>
+            )}
 
-            {/* Main Content */}
-            <div className="flex-1 flex flex-col">
-                {/* Header */}
-                <header className="h-16 bg-white border-b border-mocha-200 flex items-center justify-between px-6">
-                    <div>
-                        <h1 className="font-bold text-mocha-900">Dashboard</h1>
-                        <p className="text-sm text-mocha-500">Welcome back, {store.name}</p>
-                    </div>
-                    <div className="flex items-center gap-4">
-                        <Link href="/seller/products/new" className="btn-primary flex items-center gap-2 !py-2">
-                            <Plus className="w-4 h-4" />
-                            Add Product
-                        </Link>
-                        <div className="w-10 h-10 rounded-xl bg-mocha-100 flex items-center justify-center">
-                            <img src={store.logo} alt={store.name} className="w-8 h-8 rounded-lg" />
+            {/* Stats Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-white rounded-2xl p-5 border border-mocha-100 shadow-sm">
+                    <div className="flex items-start justify-between">
+                        <div>
+                            <p className="text-mocha-500 text-sm font-medium">Total Products</p>
+                            <p className="text-2xl font-bold text-mocha-900 mt-1">{stats.totalProducts}</p>
+                        </div>
+                        <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center">
+                            <Package className="w-6 h-6 text-blue-600" />
                         </div>
                     </div>
-                </header>
+                    <div className="flex items-center gap-1 mt-3">
+                        <TrendingUp className="w-4 h-4 text-green-500" />
+                        <span className="text-green-600 text-sm font-medium">+12%</span>
+                        <span className="text-mocha-400 text-sm">this month</span>
+                    </div>
+                </div>
 
-                {/* Dashboard Content */}
-                <main className="flex-1 p-6 overflow-y-auto">
-                    {/* Stats */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                        {[
-                            { label: 'Total Revenue', value: `₱${sellerDashboardStats.totalRevenue.toLocaleString()}`, icon: DollarSign, color: 'bg-green-500' },
-                            { label: 'Total Orders', value: sellerDashboardStats.totalOrders, icon: ShoppingCart, color: 'bg-blue-500' },
-                            { label: 'Products', value: sellerDashboardStats.totalProducts, icon: Package, color: 'bg-purple-500' },
-                            { label: 'Avg Rating', value: sellerDashboardStats.averageRating, icon: Star, color: 'bg-amber-500' },
-                        ].map((stat, i) => (
-                            <div key={i} className="glass-card rounded-2xl p-6">
-                                <div className="flex items-center justify-between mb-4">
-                                    <div className={`w-12 h-12 rounded-xl ${stat.color} flex items-center justify-center`}>
-                                        <stat.icon className="w-6 h-6 text-white" />
+                <div className="bg-white rounded-2xl p-5 border border-mocha-100 shadow-sm">
+                    <div className="flex items-start justify-between">
+                        <div>
+                            <p className="text-mocha-500 text-sm font-medium">Total Orders</p>
+                            <p className="text-2xl font-bold text-mocha-900 mt-1">{stats.totalOrders}</p>
+                        </div>
+                        <div className="w-12 h-12 rounded-xl bg-purple-100 flex items-center justify-center">
+                            <ShoppingCart className="w-6 h-6 text-purple-600" />
+                        </div>
+                    </div>
+                    {stats.pendingOrders > 0 && (
+                        <div className="flex items-center gap-1 mt-3">
+                            <Clock className="w-4 h-4 text-yellow-500" />
+                            <span className="text-yellow-600 text-sm font-medium">{stats.pendingOrders} pending</span>
+                        </div>
+                    )}
+                </div>
+
+                <div className="bg-white rounded-2xl p-5 border border-mocha-100 shadow-sm">
+                    <div className="flex items-start justify-between">
+                        <div>
+                            <p className="text-mocha-500 text-sm font-medium">Total Revenue</p>
+                            <p className="text-2xl font-bold text-mocha-900 mt-1">{formatCurrency(stats.totalRevenue)}</p>
+                        </div>
+                        <div className="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center">
+                            <DollarSign className="w-6 h-6 text-green-600" />
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-1 mt-3">
+                        <TrendingUp className="w-4 h-4 text-green-500" />
+                        <span className="text-green-600 text-sm font-medium">+24%</span>
+                        <span className="text-mocha-400 text-sm">this month</span>
+                    </div>
+                </div>
+
+                <div className="bg-white rounded-2xl p-5 border border-mocha-100 shadow-sm">
+                    <div className="flex items-start justify-between">
+                        <div>
+                            <p className="text-mocha-500 text-sm font-medium">Store Rating</p>
+                            <p className="text-2xl font-bold text-mocha-900 mt-1">{store?.rating || 0}</p>
+                        </div>
+                        <div className="w-12 h-12 rounded-xl bg-yellow-100 flex items-center justify-center">
+                            <Star className="w-6 h-6 text-yellow-600" />
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-1 mt-3">
+                        <Eye className="w-4 h-4 text-mocha-400" />
+                        <span className="text-mocha-500 text-sm">{store?.total_reviews || 0} reviews</span>
+                    </div>
+                </div>
+            </div>
+
+            {/* Recent Orders */}
+            <div className="bg-white rounded-2xl border border-mocha-100 overflow-hidden">
+                <div className="flex items-center justify-between p-5 border-b border-mocha-100">
+                    <h2 className="text-lg font-semibold text-mocha-900">Recent Orders</h2>
+                    <Link href="/seller/orders" className="text-mocha-500 hover:text-mocha-700 text-sm flex items-center gap-1">
+                        View all <ArrowUpRight className="w-4 h-4" />
+                    </Link>
+                </div>
+                <div className="divide-y divide-mocha-100">
+                    {recentOrders.length === 0 ? (
+                        <div className="p-8 text-center text-mocha-500">
+                            No orders yet. Share your store to start receiving orders!
+                        </div>
+                    ) : (
+                        recentOrders.map((order) => (
+                            <div key={order.id} className="p-4 hover:bg-mocha-50 transition-colors">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="font-medium text-mocha-900">Order #{order.id.slice(0, 8)}</p>
+                                        <p className="text-sm text-mocha-500">{formatDate(order.created_at)}</p>
                                     </div>
-                                    <TrendingUp className="w-5 h-5 text-green-500" />
+                                    <div className="text-right">
+                                        <p className="font-semibold text-mocha-900">{formatCurrency(order.total)}</p>
+                                        {getStatusBadge(order.status)}
+                                    </div>
                                 </div>
-                                <p className="text-2xl font-bold text-mocha-900">{stat.value}</p>
-                                <p className="text-mocha-500">{stat.label}</p>
                             </div>
-                        ))}
-                    </div>
+                        ))
+                    )}
+                </div>
+            </div>
 
-                    {/* Recent Orders & Products */}
-                    <div className="grid lg:grid-cols-2 gap-6">
-                        {/* Recent Orders */}
-                        <div className="glass-card rounded-2xl p-6">
-                            <div className="flex items-center justify-between mb-6">
-                                <h3 className="font-bold text-mocha-900">Recent Orders</h3>
-                                <Link href="/seller/orders" className="text-mocha-500 hover:text-mocha-600 text-sm">View All</Link>
-                            </div>
-                            <div className="space-y-4">
-                                {storeOrders.slice(0, 5).map((order) => (
-                                    <div key={order.id} className="flex items-center justify-between p-3 rounded-xl bg-cloud-100">
-                                        <div>
-                                            <p className="font-medium text-mocha-900">{order.id}</p>
-                                            <p className="text-sm text-mocha-500">{order.items.length} items</p>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="font-semibold text-mocha-800">₱{order.total.toLocaleString()}</p>
-                                            <span className={`text-xs px-2 py-1 rounded-full ${order.status === 'delivered' ? 'bg-green-100 text-green-700' :
-                                                order.status === 'processing' ? 'bg-blue-100 text-blue-700' :
-                                                    'bg-amber-100 text-amber-700'
-                                                }`}>
-                                                {order.status}
-                                            </span>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Top Products */}
-                        <div className="glass-card rounded-2xl p-6">
-                            <div className="flex items-center justify-between mb-6">
-                                <h3 className="font-bold text-mocha-900">Top Products</h3>
-                                <Link href="/seller/products" className="text-mocha-500 hover:text-mocha-600 text-sm">View All</Link>
-                            </div>
-                            <div className="space-y-4">
-                                {storeProducts.slice(0, 5).map((product) => (
-                                    <div key={product.id} className="flex items-center gap-4 p-3 rounded-xl bg-cloud-100">
-                                        <img src={product.images[0]} alt={product.name} className="w-12 h-12 rounded-lg object-cover" />
-                                        <div className="flex-1 min-w-0">
-                                            <p className="font-medium text-mocha-900 truncate">{product.name}</p>
-                                            <p className="text-sm text-mocha-500">₱{product.price.toLocaleString()}</p>
-                                        </div>
-                                        <div className="flex items-center gap-1">
-                                            <Eye className="w-4 h-4 text-mocha-400" />
-                                            <Edit className="w-4 h-4 text-mocha-400" />
-                                            <MoreVertical className="w-4 h-4 text-mocha-400" />
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
+            {/* Quick Actions */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <Link href="/seller/products/new" className="bg-white rounded-2xl p-5 border border-mocha-100 hover:border-mocha-300 hover:shadow-md transition-all group">
+                    <div className="w-12 h-12 rounded-xl bg-mocha-100 flex items-center justify-center mb-3 group-hover:bg-mocha-200 transition-colors">
+                        <Plus className="w-6 h-6 text-mocha-600" />
                     </div>
-                </main>
+                    <h3 className="font-medium text-mocha-900">Add Product</h3>
+                    <p className="text-sm text-mocha-500">Upload a new product</p>
+                </Link>
+                <Link href="/seller/orders" className="bg-white rounded-2xl p-5 border border-mocha-100 hover:border-mocha-300 hover:shadow-md transition-all group">
+                    <div className="w-12 h-12 rounded-xl bg-purple-100 flex items-center justify-center mb-3 group-hover:bg-purple-200 transition-colors">
+                        <ShoppingCart className="w-6 h-6 text-purple-600" />
+                    </div>
+                    <h3 className="font-medium text-mocha-900">Manage Orders</h3>
+                    <p className="text-sm text-mocha-500">View and process orders</p>
+                </Link>
+                <Link href="/seller/store" className="bg-white rounded-2xl p-5 border border-mocha-100 hover:border-mocha-300 hover:shadow-md transition-all group">
+                    <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center mb-3 group-hover:bg-blue-200 transition-colors">
+                        <Eye className="w-6 h-6 text-blue-600" />
+                    </div>
+                    <h3 className="font-medium text-mocha-900">View Store</h3>
+                    <p className="text-sm text-mocha-500">Preview your storefront</p>
+                </Link>
+                <Link href="/seller/analytics" className="bg-white rounded-2xl p-5 border border-mocha-100 hover:border-mocha-300 hover:shadow-md transition-all group">
+                    <div className="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center mb-3 group-hover:bg-green-200 transition-colors">
+                        <TrendingUp className="w-6 h-6 text-green-600" />
+                    </div>
+                    <h3 className="font-medium text-mocha-900">Analytics</h3>
+                    <p className="text-sm text-mocha-500">View sales insights</p>
+                </Link>
             </div>
         </div>
     );

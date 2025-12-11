@@ -1,5 +1,5 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { User, SubscriptionPlan } from '@/data/mockup';
+import { User, Plan } from '@/types';
 
 interface UserState {
     currentUser: User | null;
@@ -30,9 +30,10 @@ const userSlice = createSlice({
             state.currentUser = null;
             state.isAuthenticated = false;
         },
-        updateSubscription: (state, action: PayloadAction<SubscriptionPlan>) => {
+        updatePlan: (state, action: PayloadAction<Plan>) => {
             if (state.currentUser) {
-                state.currentUser.subscription = action.payload;
+                state.currentUser.plan = action.payload;
+                state.currentUser.planId = action.payload.id;
             }
         },
         updateProfile: (state, action: PayloadAction<Partial<User>>) => {
@@ -63,15 +64,23 @@ const userSlice = createSlice({
 export const {
     setUser,
     logout,
-    updateSubscription,
+    updatePlan,
     updateProfile,
     switchSession,
     removeSession,
     setLoading,
 } = userSlice.actions;
 
-export const selectIsPlus = (state: { user: UserState }) =>
-    state.user.currentUser?.subscription === 'plus';
+export const selectIsPlus = (state: { user: UserState }) => {
+    const planName = state.user.currentUser?.plan?.name;
+    // Assuming 'Starter' is the basic plan, anything else is "Plus" equivalent for UI badges?
+    // User interface has logic for this? 
+    // The previous code was subscription === 'plus'. 
+    // Now we have Starter, Growth, Pro, Enterprise.
+    // Let's assume Growth, Pro, Enterprise are "Plus".
+    return planName === 'Growth' || planName === 'Pro' || planName === 'Enterprise';
+};
+
 export const selectIsAdmin = (state: { user: UserState }) =>
     state.user.currentUser?.role === 'admin';
 export const selectIsSeller = (state: { user: UserState }) =>

@@ -7,7 +7,7 @@ import { RootState } from '@/store';
 
 export default function HeroSection() {
     const { currentUser } = useSelector((state: RootState) => state.user);
-    const isPlus = currentUser?.subscription === 'plus';
+    const isPlus = ['Growth', 'Pro', 'Enterprise'].includes(currentUser?.plan?.name || '');
 
     return (
         <section className="relative min-h-[90vh] flex items-center overflow-hidden pb-0 pt-32 lg:pt-0">

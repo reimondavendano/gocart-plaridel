@@ -1,10 +1,11 @@
 'use client';
 
+import { useEffect } from 'react';
 import Link from 'next/link';
 import { Heart, ShoppingBag, ArrowRight } from 'lucide-react';
-import { useAppSelector } from '@/store';
+import { useAppDispatch, useAppSelector } from '@/store';
 import { selectWishlistItems } from '@/store/slices/wishlistSlice';
-import { mockProducts } from '@/data/mockup';
+import { fetchProducts } from '@/store/slices/productSlice';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import CartDrawer from '@/components/cart/CartDrawer';
@@ -13,10 +14,18 @@ import ToastContainer from '@/components/ui/Toast';
 import ProductCard from '@/components/product/ProductCard';
 
 export default function WishlistPage() {
+    const dispatch = useAppDispatch();
     const wishlistIds = useAppSelector(selectWishlistItems);
+    const { products } = useAppSelector((state) => state.product);
 
-    // Filter mock products based on wishlist IDs
-    const wishlistProducts = mockProducts.filter((p) => wishlistIds.includes(p.id));
+    useEffect(() => {
+        if (products.length === 0) {
+            dispatch(fetchProducts());
+        }
+    }, [dispatch, products.length]);
+
+    // Filter products based on wishlist IDs using the loaded products
+    const wishlistProducts = products.filter((p) => wishlistIds.includes(p.id));
 
     return (
         <>
@@ -54,10 +63,12 @@ export default function WishlistPage() {
                                 <Heart className="w-12 h-12 text-mocha-300" />
                             </div>
                             <h2 className="text-2xl font-bold text-mocha-900 mb-3">
-                                Your wishlist is empty
+                                {wishlistIds.length > 0 ? 'Loading products...' : 'Your wishlist is empty'}
                             </h2>
                             <p className="text-mocha-600 mb-8 max-w-md mx-auto">
-                                Save items you love! Just click the heart icon on any product to add it here.
+                                {wishlistIds.length > 0
+                                    ? 'Please wait while we fetch your saved items.'
+                                    : 'Save items you love! Just click the heart icon on any product to add it here.'}
                             </p>
                             <Link
                                 href="/products"

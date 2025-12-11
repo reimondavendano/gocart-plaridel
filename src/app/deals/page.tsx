@@ -3,15 +3,20 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Clock, Zap, Tag, Percent, ArrowRight, Filter, Flame, ShoppingBag } from 'lucide-react';
-import { mockProducts, Product } from '@/data/mockup';
+import { useAppDispatch, useAppSelector } from '@/store';
+import { fetchProducts } from '@/store/slices/productSlice';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import CartDrawer from '@/components/cart/CartDrawer';
 import SearchModal from '@/components/search/SearchModal';
 import ToastContainer from '@/components/ui/Toast';
 import ProductCard from '@/components/product/ProductCard';
+import { Product } from '@/types';
 
 export default function DealsPage() {
+    const dispatch = useAppDispatch();
+    const { products } = useAppSelector((state) => state.product);
+
     const [timeLeft, setTimeLeft] = useState({
         hours: 23,
         minutes: 45,
@@ -19,8 +24,14 @@ export default function DealsPage() {
     });
     const [filter, setFilter] = useState<'all' | 'flash' | 'clearance'>('all');
 
+    useEffect(() => {
+        if (products.length === 0) {
+            dispatch(fetchProducts());
+        }
+    }, [dispatch, products.length]);
+
     // Get products with discounts
-    const dealsProducts = mockProducts.filter(p => p.comparePrice && p.comparePrice > p.price);
+    const dealsProducts = products.filter(p => p.comparePrice && p.comparePrice > p.price);
 
     // Calculate discount percentage
     const getDiscount = (product: Product) => {
@@ -155,8 +166,8 @@ export default function DealsPage() {
                                         key={tab.id}
                                         onClick={() => setFilter(tab.id as typeof filter)}
                                         className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${filter === tab.id
-                                                ? 'bg-mocha-500 text-white shadow-lg'
-                                                : 'bg-white text-mocha-600 hover:bg-mocha-100'
+                                            ? 'bg-mocha-500 text-white shadow-lg'
+                                            : 'bg-white text-mocha-600 hover:bg-mocha-100'
                                             }`}
                                     >
                                         <Icon className="w-4 h-4" />

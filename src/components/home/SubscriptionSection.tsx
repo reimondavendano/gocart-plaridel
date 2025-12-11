@@ -2,8 +2,13 @@
 
 import Link from 'next/link';
 import { Store, TrendingUp, Zap, Shield, Check, ArrowRight } from 'lucide-react';
+import { useAppSelector } from '@/store';
 
 export default function SubscriptionSection() {
+    const { isAuthenticated } = useAppSelector((state) => state.user);
+
+    if (!isAuthenticated) return null;
+
     const plans = [
         {
             name: 'Starter',

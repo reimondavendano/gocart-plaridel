@@ -1,5 +1,5 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { Address } from '@/data/mockup';
+import { Address } from '@/types';
 
 interface AddressState {
     addresses: Address[];

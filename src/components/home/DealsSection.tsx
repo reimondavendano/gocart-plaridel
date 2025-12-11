@@ -1,12 +1,31 @@
 'use client';
 
+import { useEffect } from 'react';
 import Link from 'next/link';
 import { Percent, ArrowRight } from 'lucide-react';
 import ProductCard from '@/components/product/ProductCard';
-import { mockProducts } from '@/data/mockup';
+import { useAppDispatch, useAppSelector } from '@/store';
+import { fetchProducts } from '@/store/slices/productSlice';
 
 export default function DealsSection() {
-    const dealProducts = mockProducts.filter(p => p.comparePrice);
+    const dispatch = useAppDispatch();
+    const { products, isLoading } = useAppSelector((state) => state.product);
+
+    useEffect(() => {
+        if (products.length === 0) {
+            dispatch(fetchProducts());
+        }
+    }, [dispatch, products.length]);
+
+    const dealProducts = products.filter(p => p.comparePrice && p.comparePrice > p.price);
+
+    if (isLoading && products.length === 0) {
+        return null;
+    }
+
+    if (dealProducts.length === 0) {
+        return null;
+    }
 
     return (
         <section className="py-12">
