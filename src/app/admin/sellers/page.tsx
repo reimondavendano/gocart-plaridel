@@ -41,7 +41,14 @@ export default function AdminSellersPage() {
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
-            setSellers(data || []);
+
+            // Transform data to match interface (Supabase returns arrays for joins)
+            const formattedSellers: Seller[] = (data || []).map((seller: any) => ({
+                ...seller,
+                plan: Array.isArray(seller.plan) && seller.plan.length > 0 ? seller.plan[0] : seller.plan
+            }));
+
+            setSellers(formattedSellers);
         } catch (error) {
             console.error('Error fetching sellers:', error);
         } finally {
@@ -132,9 +139,9 @@ export default function AdminSellersPage() {
                                         </td>
                                         <td className="px-6 py-4">
                                             <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium ${seller.plan?.name === 'Enterprise' ? 'bg-purple-100 text-purple-700' :
-                                                    seller.plan?.name === 'Pro' ? 'bg-blue-100 text-blue-700' :
-                                                        seller.plan?.name === 'Growth' ? 'bg-green-100 text-green-700' :
-                                                            'bg-mocha-100 text-mocha-700'
+                                                seller.plan?.name === 'Pro' ? 'bg-blue-100 text-blue-700' :
+                                                    seller.plan?.name === 'Growth' ? 'bg-green-100 text-green-700' :
+                                                        'bg-mocha-100 text-mocha-700'
                                                 }`}>
                                                 {seller.plan?.name !== 'Starter' && <Crown className="w-3 h-3" />}
                                                 {seller.plan?.name || 'Starter'}
