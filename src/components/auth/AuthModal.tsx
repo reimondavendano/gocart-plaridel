@@ -54,7 +54,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                         // Fetch user details from users table
                         const { data: userData } = await supabase
                             .from('users')
-                            .select('id, email, role')
+                            .select('id, email, role, created_at')
                             .eq('email', email)
                             .single();
 
@@ -89,6 +89,9 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                                 name: profileData?.name || 'Seller',
                                 avatar: profileData?.avatar,
                                 phone: profileData?.phone,
+                                planId: profileData?.plan_id || null,
+                                createdAt: userData.created_at || new Date().toISOString(),
+                                updatedAt: new Date().toISOString(),
                                 plan: profileData?.plan ? {
                                     ...profileData.plan,
                                     id: profileData.plan_id || 'custom-plan',

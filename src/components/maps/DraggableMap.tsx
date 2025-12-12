@@ -162,8 +162,9 @@ export default function DraggableMap({
 
         // Dynamic import of Leaflet only on client side
         const initMap = async () => {
+            if (!mapContainerRef.current) return;
             const L = (await import('leaflet')).default;
-            await import('leaflet/dist/leaflet.css');
+            // CSS imported in layout.tsx globally
 
             // Fix for default marker icon
             const DefaultIcon = L.icon({
