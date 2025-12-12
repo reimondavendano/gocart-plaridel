@@ -46,7 +46,8 @@ export const fetchProducts = createAsyncThunk('product/fetchProducts', async () 
             *,
             stores (
                 name
-            )
+            ),
+            category:categories(slug)
         `);
 
     if (error) {
@@ -64,7 +65,7 @@ export const fetchProducts = createAsyncThunk('product/fetchProducts', async () 
         price: item.price,
         comparePrice: item.compare_price,
         images: item.images || [],
-        category: item.category_slug, // Mapping category_slug to category
+        category: item.category?.slug || 'uncategorized',
         stock: item.stock,
         inStock: item.in_stock,
         rating: item.rating,

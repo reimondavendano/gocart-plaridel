@@ -51,23 +51,30 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                         });
 
                     if (isValid) {
-                        // Fetch user details
+                        // Fetch user details from users table
                         const { data: userData } = await supabase
                             .from('users')
-                            .select('*, plan:plans(name, price, features)')
+                            .select('id, email, role')
                             .eq('email', email)
                             .single();
 
                         if (userData && userData.role === 'seller') {
+                            // Fetch profile details from user_profiles table
+                            const { data: profileData } = await supabase
+                                .from('user_profiles')
+                                .select('*, plan:plans(name, price, features)')
+                                .eq('user_id', userData.id)
+                                .single();
+
                             // Create custom session for seller
                             const sellerSession = {
                                 id: userData.id,
                                 email: userData.email,
-                                name: userData.name,
-                                avatar: userData.avatar,
+                                name: profileData?.name || 'Seller',
+                                avatar: profileData?.avatar,
                                 role: userData.role,
-                                plan: userData.plan,
-                                phone: userData.phone,
+                                plan: profileData?.plan,
+                                phone: profileData?.phone,
                                 loginAt: new Date().toISOString()
                             };
 
@@ -76,10 +83,15 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
 
                             // Dispatch to Redux so UI updates immediately
                             dispatch(setUser({
-                                ...userData,
-                                plan: userData.plan ? {
-                                    ...userData.plan,
-                                    id: 'custom-plan',
+                                id: userData.id,
+                                email: userData.email,
+                                role: userData.role,
+                                name: profileData?.name || 'Seller',
+                                avatar: profileData?.avatar,
+                                phone: profileData?.phone,
+                                plan: profileData?.plan ? {
+                                    ...profileData.plan,
+                                    id: profileData.plan_id || 'custom-plan',
                                     currency: 'PHP',
                                     maxStores: 1,
                                     maxProducts: 100,
@@ -119,16 +131,32 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                 if (error) throw error;
 
                 if (data.user) {
-                    const { error: profileError } = await supabase
+                    // Insert into users table (auth data only)
+                    const { error: userError } = await supabase
                         .from('users')
                         .insert([
                             {
                                 id: data.user.id,
                                 email: email,
-                                name: name,
                                 role: 'customer',
-                                plan_id: null,
+                                created_at: new Date().toISOString(),
+                                updated_at: new Date().toISOString()
+                            }
+                        ]);
+
+                    if (userError) {
+                        console.error('User creation error:', userError);
+                    }
+
+                    // Insert into user_profiles table (profile data)
+                    const { error: profileError } = await supabase
+                        .from('user_profiles')
+                        .insert([
+                            {
+                                user_id: data.user.id,
+                                name: name,
                                 avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${name}`,
+                                plan_id: '11111111-1111-1111-1111-111111111111', // Starter plan
                                 created_at: new Date().toISOString(),
                                 updated_at: new Date().toISOString()
                             }

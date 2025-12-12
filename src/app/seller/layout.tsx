@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAppDispatch, useAppSelector } from '@/store';
 import { setUser } from '@/store/slices/userSlice';
+import { supabase } from '@/lib/supabase';
+import { User as UserType } from '@/types';
 import {
     LayoutDashboard, Package, Store, Settings, LogOut, Menu, X,
     User, MapPin, CreditCard, Bell, ChevronDown, Plus, BarChart3, MessageSquare
@@ -51,19 +53,77 @@ export default function SellerLayout({
     const isLoginPage = pathname === '/seller/login';
 
     useEffect(() => {
-        // Check localStorage for seller session
-        const storedSession = localStorage.getItem('gocart_seller');
-        if (storedSession) {
-            try {
-                const session = JSON.parse(storedSession);
-                setSellerSession(session);
-                // Dispatch to Redux so child pages can access it via useAppSelector
-                dispatch(setUser(session));
-            } catch (e) {
-                localStorage.removeItem('gocart_seller');
+        const checkAuth = async () => {
+            // 1. Check localStorage for seller session (legacy/explicit seller login)
+            const storedSession = localStorage.getItem('gocart_seller');
+            if (storedSession) {
+                try {
+                    const session = JSON.parse(storedSession);
+                    setSellerSession(session);
+                    dispatch(setUser(session));
+                    setIsLoading(false);
+                    return;
+                } catch (e) {
+                    localStorage.removeItem('gocart_seller');
+                }
             }
-        }
-        setIsLoading(false);
+
+            // 2. Check Supabase Session (e.g. Google Login)
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.user) {
+                try {
+                    // Fetch profile and user data
+                    const { data: profileData } = await supabase
+                        .from('user_profiles')
+                        .select('*, plan:plans(*)')
+                        .eq('user_id', session.user.id)
+                        .single();
+
+                    const { data: userData } = await supabase
+                        .from('users')
+                        .select('role')
+                        .eq('id', session.user.id)
+                        .single();
+
+                    if (userData && profileData) {
+                        const mappedUser: UserType = {
+                            id: session.user.id,
+                            email: session.user.email || '',
+                            name: profileData.name || session.user.email?.split('@')[0] || 'User',
+                            role: userData.role,
+                            planId: profileData.plan_id,
+                            plan: profileData.plan ? {
+                                id: profileData.plan.id,
+                                name: profileData.plan.name,
+                                price: profileData.plan.price,
+                                currency: profileData.plan.currency,
+                                features: profileData.plan.features,
+                                maxStores: profileData.plan.max_stores,
+                                maxProducts: profileData.plan.max_products,
+                                transactionFee: profileData.plan.transaction_fee,
+                                isActive: profileData.plan.is_active,
+                                createdAt: profileData.plan.created_at
+                            } : undefined,
+                            avatar: profileData.avatar,
+                            phone: profileData.phone,
+                            createdAt: profileData.created_at,
+                            updatedAt: profileData.updated_at
+                        };
+
+                        // Only set if they are actually a seller
+                        if (userData.role === 'seller') {
+                            dispatch(setUser(mappedUser));
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error restoring session:', error);
+                }
+            }
+
+            setIsLoading(false);
+        };
+
+        checkAuth();
     }, [dispatch]);
 
     useEffect(() => {
@@ -222,6 +282,13 @@ export default function SellerLayout({
                             </h1>
                         </div>
                         <div className="flex items-center gap-3">
+                            <Link
+                                href="/"
+                                className="hidden md:flex items-center gap-2 px-3 py-2 rounded-xl text-mocha-600 hover:bg-mocha-100 transition-colors text-sm font-medium"
+                            >
+                                <Store className="w-4 h-4" />
+                                Back to Home
+                            </Link>
                             <button className="relative p-2 rounded-xl hover:bg-mocha-100 text-mocha-600 transition-colors">
                                 <Bell className="w-5 h-5" />
                                 <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />

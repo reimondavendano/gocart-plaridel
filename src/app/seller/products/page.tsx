@@ -21,7 +21,8 @@ interface Product {
     in_stock: boolean;
     rating: number;
     review_count: number;
-    category_slug: string;
+    category_id: string;
+    category: { slug: string } | null; // Joined category
     is_featured: boolean;
     is_new: boolean;
     created_at: string;
@@ -60,15 +61,15 @@ export default function SellerProductsPage() {
             if (store) {
                 setStoreId(store.id);
 
-                // Fetch products
+                // Fetch products with joined category slug
                 const { data: productsData } = await supabase
                     .from('products')
-                    .select('*')
+                    .select('*, category:categories(slug)')
                     .eq('store_id', store.id)
                     .order('created_at', { ascending: false });
 
                 if (productsData) {
-                    setProducts(productsData);
+                    setProducts(productsData as any); // Type assertion needed for joined data
                 }
             }
 
@@ -114,7 +115,8 @@ export default function SellerProductsPage() {
 
     const filteredProducts = products.filter(product => {
         const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase());
-        const matchesCategory = categoryFilter === 'all' || product.category_slug === categoryFilter;
+        // Check joined category slug
+        const matchesCategory = categoryFilter === 'all' || product.category?.slug === categoryFilter;
         return matchesSearch && matchesCategory;
     });
 
@@ -252,7 +254,7 @@ export default function SellerProductsPage() {
                                 <div className="flex items-start justify-between gap-2">
                                     <div className="flex-1 min-w-0">
                                         <h3 className="font-medium text-mocha-900 truncate">{product.name}</h3>
-                                        <p className="text-sm text-mocha-500 capitalize">{product.category_slug?.replace('-', ' ')}</p>
+                                        <p className="text-sm text-mocha-500 capitalize">{product.category?.slug?.replace('-', ' ')}</p>
                                     </div>
                                 </div>
                                 <div className="flex items-center justify-between mt-3">

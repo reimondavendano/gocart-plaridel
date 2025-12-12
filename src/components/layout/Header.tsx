@@ -41,104 +41,92 @@ export default function Header() {
             if (!session?.user) return;
 
             try {
-                // 1. Try fetching profile with plan data
-                let { data: profile, error } = await supabase
+                // 1. First fetch from users table (auth data)
+                let { data: userData, error: userError } = await supabase
                     .from('users')
-                    .select('*, plan:plans(*)')
+                    .select('id, email, role')
                     .eq('id', session.user.id)
                     .single();
 
-                // 2. Fallback: If querying with plan fails (e.g., schema relationship issue), try basic fetch
-                if (error && error.code !== 'PGRST116') {
-                    console.warn('Fetching with plan failed, trying basic profile fetch...', error.message);
-                    const { data: basicProfile, error: basicError } = await supabase
+                // 2. If no user record exists, create one (first social login)
+                if (userError && userError.code === 'PGRST116') {
+                    // Insert into users table
+                    const { error: insertUserError } = await supabase
                         .from('users')
-                        .select('*')
+                        .insert([{
+                            id: session.user.id,
+                            email: session.user.email!,
+                            role: 'customer',
+                            created_at: new Date().toISOString(),
+                            updated_at: new Date().toISOString()
+                        }]);
+
+                    if (insertUserError) {
+                        console.error("Failed to create user:", insertUserError);
+                        return;
+                    }
+
+                    // Insert into user_profiles table
+                    const { error: insertProfileError } = await supabase
+                        .from('user_profiles')
+                        .insert([{
+                            user_id: session.user.id,
+                            name: session.user.user_metadata.full_name || session.user.email!.split('@')[0],
+                            avatar: session.user.user_metadata.avatar_url,
+                            plan_id: '11111111-1111-1111-1111-111111111111', // Starter plan
+                            created_at: new Date().toISOString(),
+                            updated_at: new Date().toISOString()
+                        }]);
+
+                    if (insertProfileError) {
+                        console.error("Failed to create profile:", insertProfileError);
+                    }
+
+                    // Re-fetch the user data
+                    const { data: newUserData } = await supabase
+                        .from('users')
+                        .select('id, email, role')
                         .eq('id', session.user.id)
                         .single();
 
-                    if (!basicError) {
-                        profile = basicProfile;
-                        error = null;
-                    } else {
-                        error = basicError;
-                    }
+                    userData = newUserData;
                 }
 
-                // 3. Handle Existing Profile
-                if (profile) {
-                    const mappedUser: UserType = {
-                        id: profile.id,
-                        email: profile.email,
-                        name: profile.name,
-                        role: profile.role,
-                        planId: profile.plan_id,
-                        plan: profile.plan ? {
-                            id: profile.plan.id,
-                            name: profile.plan.name,
-                            price: profile.plan.price,
-                            currency: profile.plan.currency,
-                            features: profile.plan.features,
-                            maxStores: profile.plan.max_stores,
-                            maxProducts: profile.plan.max_products,
-                            transactionFee: profile.plan.transaction_fee,
-                            isActive: profile.plan.is_active,
-                            createdAt: profile.plan.created_at
-                        } : undefined,
-                        avatar: profile.avatar,
-                        phone: profile.phone,
-                        createdAt: profile.created_at,
-                        updatedAt: profile.updated_at
-                    };
-                    dispatch(setUser(mappedUser));
-                }
-                // 4. Handle New User (Social Login first time) - STRICT CHECK for "Row not found"
-                else if (error && error.code === 'PGRST116') {
-                    const newProfile = {
-                        id: session.user.id,
-                        email: session.user.email!,
-                        name: session.user.user_metadata.full_name || session.user.email!.split('@')[0],
-                        avatar: session.user.user_metadata.avatar_url,
-                        role: 'customer',
-                        plan_id: null, // Optional for new customers
-                        created_at: new Date().toISOString(),
-                        updated_at: new Date().toISOString()
-                    };
+                if (!userData) return;
 
-                    const { error: insertError } = await supabase
-                        .from('users')
-                        .insert([newProfile]);
+                // 3. Fetch profile data from user_profiles
+                const { data: profileData } = await supabase
+                    .from('user_profiles')
+                    .select('*, plan:plans(*)')
+                    .eq('user_id', userData.id)
+                    .single();
 
-                    if (!insertError) {
-                        // Default 'Starter' plan for Redux state (even if null in DB)
-                        const starterPlan = {
-                            id: '11111111-1111-1111-1111-111111111111',
-                            name: 'Starter',
-                            price: 0,
-                            currency: 'PHP',
-                            features: [],
-                            maxStores: 1,
-                            maxProducts: 1,
-                            transactionFee: 3,
-                            isActive: true,
-                            createdAt: new Date().toISOString()
-                        };
+                // 4. Map to Redux state
+                const mappedUser: UserType = {
+                    id: userData.id,
+                    email: userData.email,
+                    name: profileData?.name || session.user.email?.split('@')[0] || 'User',
+                    role: userData.role,
+                    planId: profileData?.plan_id,
+                    plan: profileData?.plan ? {
+                        id: profileData.plan.id,
+                        name: profileData.plan.name,
+                        price: profileData.plan.price,
+                        currency: profileData.plan.currency,
+                        features: profileData.plan.features,
+                        maxStores: profileData.plan.max_stores,
+                        maxProducts: profileData.plan.max_products,
+                        transactionFee: profileData.plan.transaction_fee,
+                        isActive: profileData.plan.is_active,
+                        createdAt: profileData.plan.created_at
+                    } : undefined,
+                    avatar: profileData?.avatar,
+                    phone: profileData?.phone,
+                    createdAt: profileData?.created_at,
+                    updatedAt: profileData?.updated_at
+                };
+                dispatch(setUser(mappedUser));
 
-                        dispatch(setUser({
-                            id: newProfile.id,
-                            email: newProfile.email,
-                            name: newProfile.name,
-                            avatar: newProfile.avatar,
-                            role: 'customer' as const,
-                            planId: newProfile.plan_id,
-                            plan: starterPlan,
-                            createdAt: newProfile.created_at,
-                            updatedAt: newProfile.updated_at
-                        }));
-                    } else {
-                        console.error("Failed to create new profile:", insertError);
-                    }
-                }
             } catch (err) {
                 console.error("Unexpected error in auth flow:", err);
             }

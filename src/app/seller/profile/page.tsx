@@ -49,14 +49,14 @@ export default function SellerProfilePage() {
 
         try {
             const { error } = await supabase
-                .from('users')
+                .from('user_profiles')
                 .update({
                     name,
                     phone,
                     avatar,
                     updated_at: new Date().toISOString()
                 })
-                .eq('id', currentUser.id);
+                .eq('user_id', currentUser.id);
 
             if (error) throw error;
 

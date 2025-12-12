@@ -43,7 +43,7 @@ export default function SellerLoginPage() {
             // Password is valid, now fetch the user data
             const { data: userData, error: userError } = await supabase
                 .from('users')
-                .select('*, plan:plans(name, price, features)')
+                .select('id, email, role')
                 .eq('email', email)
                 .single();
 
@@ -60,15 +60,22 @@ export default function SellerLoginPage() {
                 return;
             }
 
+            // Fetch profile data from user_profiles
+            const { data: profileData } = await supabase
+                .from('user_profiles')
+                .select('*, plan:plans(name, price, features)')
+                .eq('user_id', userData.id)
+                .single();
+
             // Store seller session in localStorage
             const sellerSession = {
                 id: userData.id,
                 email: userData.email,
-                name: userData.name,
-                avatar: userData.avatar,
+                name: profileData?.name || 'Seller',
+                avatar: profileData?.avatar,
                 role: userData.role,
-                plan: userData.plan,
-                phone: userData.phone,
+                plan: profileData?.plan,
+                phone: profileData?.phone,
                 loginAt: new Date().toISOString()
             };
 
@@ -188,7 +195,7 @@ export default function SellerLoginPage() {
                     <div className="mt-6 p-4 rounded-xl bg-mocha-50 border border-mocha-100">
                         <p className="text-sm text-mocha-600 font-medium mb-2">Demo Account:</p>
                         <p className="text-sm text-mocha-500">
-                            Email: <code className="bg-mocha-100 px-1.5 py-0.5 rounded">gadgets@seller.com</code>
+                            Email: <code className="bg-mocha-100 px-1.5 py-0.5 rounded">seller@gocart.ph</code>
                         </p>
                         <p className="text-sm text-mocha-500">
                             Password: <code className="bg-mocha-100 px-1.5 py-0.5 rounded">seller123</code>

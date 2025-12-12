@@ -51,6 +51,20 @@ export default function ProductPage() {
                     return;
                 }
 
+                // Fetch Category to get slug
+                let categorySlug = '';
+                if (productData.category_id) {
+                    const { data: categoryData } = await supabase
+                        .from('categories')
+                        .select('slug, name')
+                        .eq('id', productData.category_id)
+                        .single();
+
+                    if (categoryData) {
+                        categorySlug = categoryData.slug;
+                    }
+                }
+
                 const mappedProduct: Product = {
                     id: productData.id,
                     name: productData.name,
@@ -59,7 +73,7 @@ export default function ProductPage() {
                     price: productData.price,
                     comparePrice: productData.compare_price,
                     images: productData.images || [],
-                    category: productData.category_id,
+                    category: categorySlug, // Use category slug instead of category_id
                     storeId: productData.store_id,
                     rating: productData.rating || 0,
                     reviewCount: productData.review_count || 0,
@@ -100,10 +114,10 @@ export default function ProductPage() {
                 // Fetch Ratings (Placeholder for now as ratings table might not expect same UUIDs)
                 setRatings([]);
 
-                // Fetch Related Products
+                // Fetch Related Products (also fetch their category slugs)
                 const { data: relatedData } = await supabase
                     .from('products')
-                    .select('*')
+                    .select('*, category:categories(slug)')
                     .eq('category_id', productData.category_id)
                     .neq('id', productData.id)
                     .limit(4);
@@ -117,7 +131,7 @@ export default function ProductPage() {
                         price: item.price,
                         comparePrice: item.compare_price,
                         images: item.images || [],
-                        category: item.category_id,
+                        category: item.category?.slug || '',
                         storeId: item.store_id,
                         rating: item.rating || 0,
                         reviewCount: item.review_count || 0,

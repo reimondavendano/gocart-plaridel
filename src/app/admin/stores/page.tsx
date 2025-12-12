@@ -30,12 +30,12 @@ interface StoreData {
         name: string;
         email: string;
         avatar: string;
-    };
+    } | null;
     address: {
-        street: string;
-        city: string;
-        province: string;
-        postal_code: string;
+        id: string;
+        complete_address: string | null;
+        city: { name: string } | null;
+        barangay: { name: string } | null;
     } | null;
 }
 
@@ -51,27 +51,60 @@ export default function AdminStoresPage() {
 
     useEffect(() => {
         fetchStores();
-    }, [filter]);
+    }, []); // Only fetch on mount
 
     const fetchStores = async () => {
         try {
+            // First get stores with addresses and join to barangays/cities
             let query = supabase
                 .from('stores')
                 .select(`
                     *,
-                    seller:users(id, name, email, avatar),
-                    address:addresses(street, city, province, postal_code)
+                    address:addresses(
+                        id,
+                        complete_address,
+                        city:cities(name),
+                        barangay:barangays(name)
+                    )
                 `)
                 .order('created_at', { ascending: false });
 
-            if (filter !== 'all') {
-                query = query.eq('status', filter);
-            }
+            // Removed server-side filtering to keep accurate counts
+            // if (filter !== 'all') {
+            //     query = query.eq('status', filter);
+            // }
 
             const { data, error } = await query;
 
             if (error) throw error;
-            setStores(data || []);
+
+            // Fetch seller info for each store
+            const storesWithSellers = await Promise.all((data || []).map(async (store: any) => {
+                // Get user profile for seller info
+                const { data: profileData } = await supabase
+                    .from('user_profiles')
+                    .select('name, avatar, user:users(email)')
+                    .eq('user_id', store.seller_id)
+                    .single();
+
+                // Handle potentially array result from join
+                const userObj = (profileData?.user) as any;
+                const userEmail = userObj
+                    ? (Array.isArray(userObj) ? userObj[0]?.email : userObj?.email)
+                    : '';
+
+                return {
+                    ...store,
+                    seller: profileData ? {
+                        id: store.seller_id,
+                        name: profileData.name,
+                        email: userEmail || '',
+                        avatar: profileData.avatar
+                    } : null
+                };
+            }));
+
+            setStores(storesWithSellers);
         } catch (error) {
             console.error('Error fetching stores:', error);
         } finally {
@@ -85,7 +118,8 @@ export default function AdminStoresPage() {
             const adminData = localStorage.getItem('gocart_admin');
             const admin = adminData ? JSON.parse(adminData) : null;
 
-            const { error } = await supabase
+            // 1. Update store status
+            const { error: storeError } = await supabase
                 .from('stores')
                 .update({
                     status,
@@ -95,7 +129,24 @@ export default function AdminStoresPage() {
                 })
                 .eq('id', storeId);
 
-            if (error) throw error;
+            if (storeError) throw storeError;
+
+            // 2. If approved, update the seller's role from 'customer' to 'seller'
+            if (status === 'approved' && selectedStore?.seller?.id) {
+                const { error: roleError } = await supabase
+                    .from('users')
+                    .update({
+                        role: 'seller',
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', selectedStore.seller.id);
+
+                if (roleError) {
+                    console.error('Error updating seller role:', roleError);
+                } else {
+                    console.log(`User ${selectedStore.seller.id} role updated to 'seller'`);
+                }
+            }
 
             // Refresh stores
             fetchStores();
@@ -109,10 +160,16 @@ export default function AdminStoresPage() {
         }
     };
 
-    const filteredStores = stores.filter(store =>
-        store.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        store.seller?.name.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    const filteredStores = stores.filter(store => {
+        // Filter by status tab
+        if (filter !== 'all' && store.status !== filter) return false;
+
+        // Filter by search query
+        return (
+            store.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            store.seller?.name.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+    });
 
     const getStatusBadge = (status: string) => {
         const styles: Record<string, { bg: string; text: string; icon: React.ReactNode }> = {
@@ -251,7 +308,8 @@ export default function AdminStoresPage() {
                                                 <div className="flex items-start gap-1.5">
                                                     <MapPin className="w-4 h-4 text-mocha-400 mt-0.5 flex-shrink-0" />
                                                     <div className="text-sm text-mocha-700">
-                                                        {store.address.city}, {store.address.province}
+                                                        {store.address.barangay?.name && `${store.address.barangay.name}, `}
+                                                        {store.address.city?.name || 'Unknown'}
                                                         {store.latitude && store.longitude && (
                                                             <span className="block text-xs text-mocha-400">
                                                                 {store.latitude.toFixed(4)}, {store.longitude.toFixed(4)}
@@ -372,8 +430,13 @@ export default function AdminStoresPage() {
                                         <h4 className="text-sm font-medium text-mocha-400 mb-3">Store Location</h4>
                                         {selectedStore.address ? (
                                             <div className="space-y-2 text-mocha-300">
-                                                <p>{selectedStore.address.street}</p>
-                                                <p>{selectedStore.address.city}, {selectedStore.address.province} {selectedStore.address.postal_code}</p>
+                                                {selectedStore.address.complete_address && (
+                                                    <p className="text-white">{selectedStore.address.complete_address}</p>
+                                                )}
+                                                <p>
+                                                    {selectedStore.address.barangay?.name && `${selectedStore.address.barangay.name}, `}
+                                                    {selectedStore.address.city?.name || 'Unknown City'}, Bulacan
+                                                </p>
                                                 {selectedStore.latitude && selectedStore.longitude && (
                                                     <a
                                                         href={`https://www.google.com/maps?q=${selectedStore.latitude},${selectedStore.longitude}`}

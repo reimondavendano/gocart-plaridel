@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { uploadToStorage } from '@/lib/storage';
 import {
     Tag, Plus, Edit, Trash2, Search, Package, Image as ImageIcon,
-    X, Save, Loader2
+    X, Save, Loader2, Upload
 } from 'lucide-react';
 
 interface Category {
@@ -24,6 +25,8 @@ export default function AdminCategoriesPage() {
     const [showModal, setShowModal] = useState(false);
     const [editingCategory, setEditingCategory] = useState<Category | null>(null);
     const [formData, setFormData] = useState({ name: '', slug: '', icon: '', image: '', description: '' });
+    const [imageFile, setImageFile] = useState<File | null>(null);
+    const [imagePreview, setImagePreview] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
 
     useEffect(() => {
@@ -47,6 +50,7 @@ export default function AdminCategoriesPage() {
     };
 
     const handleOpenModal = (category?: Category) => {
+        setImageFile(null);
         if (category) {
             setEditingCategory(category);
             setFormData({
@@ -56,11 +60,25 @@ export default function AdminCategoriesPage() {
                 image: category.image,
                 description: category.description
             });
+            setImagePreview(category.image);
         } else {
             setEditingCategory(null);
             setFormData({ name: '', slug: '', icon: '', image: '', description: '' });
+            setImagePreview(null);
         }
         setShowModal(true);
+    };
+
+    const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            setImageFile(file);
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setImagePreview(reader.result as string);
+            };
+            reader.readAsDataURL(file);
+        }
     };
 
     const generateSlug = (name: string) => {
@@ -73,17 +91,28 @@ export default function AdminCategoriesPage() {
 
         try {
             const slug = formData.slug || generateSlug(formData.name);
+            let imageUrl = formData.image;
+
+            // Upload image if selected
+            if (imageFile) {
+                const { url } = await uploadToStorage(imageFile, {
+                    isAdmin: true,
+                    folder: 'categories',
+                    fileName: `category_${Date.now()}_${imageFile.name.replace(/[^a-zA-Z0-9.]/g, '')}`
+                });
+                if (url) imageUrl = url;
+            }
 
             if (editingCategory) {
                 const { error } = await supabase
                     .from('categories')
-                    .update({ ...formData, slug })
+                    .update({ ...formData, image: imageUrl, slug })
                     .eq('id', editingCategory.id);
                 if (error) throw error;
             } else {
                 const { error } = await supabase
                     .from('categories')
-                    .insert([{ ...formData, slug, product_count: 0 }]);
+                    .insert([{ ...formData, image: imageUrl, slug, product_count: 0 }]);
                 if (error) throw error;
             }
 
@@ -159,7 +188,7 @@ export default function AdminCategoriesPage() {
                             key={category.id}
                             className="bg-white rounded-2xl border border-mocha-200 overflow-hidden hover:shadow-lg transition-shadow"
                         >
-                            <div className="h-32 bg-mocha-100 relative">
+                            <div className="h-32 bg-mocha-100 relative group">
                                 {category.image ? (
                                     <img src={category.image} alt={category.name} className="w-full h-full object-cover" />
                                 ) : (
@@ -203,7 +232,7 @@ export default function AdminCategoriesPage() {
             {/* Modal */}
             {showModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                    <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden">
+                    <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
                         <div className="flex items-center justify-between p-6 border-b border-mocha-100">
                             <h2 className="text-xl font-bold text-mocha-900">
                                 {editingCategory ? 'Edit Category' : 'Add Category'}
@@ -212,7 +241,7 @@ export default function AdminCategoriesPage() {
                                 <X className="w-5 h-5" />
                             </button>
                         </div>
-                        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                        <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto">
                             <div>
                                 <label className="block text-sm font-medium text-mocha-700 mb-1">Name</label>
                                 <input
@@ -233,15 +262,51 @@ export default function AdminCategoriesPage() {
                                     placeholder="e.g., Smartphone"
                                 />
                             </div>
+
+                            {/* Image Upload */}
                             <div>
-                                <label className="block text-sm font-medium text-mocha-700 mb-1">Image URL</label>
-                                <input
-                                    type="text"
-                                    value={formData.image}
-                                    onChange={(e) => setFormData({ ...formData, image: e.target.value })}
-                                    className="w-full px-4 py-3 bg-mocha-50 border border-mocha-200 rounded-xl focus:outline-none focus:border-mocha-400"
-                                />
+                                <label className="block text-sm font-medium text-mocha-700 mb-1">Category Image</label>
+                                <div className="space-y-3">
+                                    {imagePreview && (
+                                        <div className="relative w-full h-32 bg-mocha-50 rounded-xl overflow-hidden border border-mocha-200">
+                                            <img
+                                                src={imagePreview}
+                                                alt="Preview"
+                                                className="w-full h-full object-cover"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setImageFile(null);
+                                                    setImagePreview(null);
+                                                    setFormData({ ...formData, image: '' });
+                                                }}
+                                                className="absolute top-2 right-2 p-1 bg-white/80 rounded-full hover:bg-white text-red-500 transition-colors"
+                                            >
+                                                <X className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    )}
+                                    <div className="flex items-center justify-center w-full">
+                                        <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-mocha-200 border-dashed rounded-xl cursor-pointer bg-mocha-50 hover:bg-mocha-100 transition-colors">
+                                            <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                                                <Upload className="w-8 h-8 text-mocha-400 mb-2" />
+                                                <p className="text-sm text-mocha-500">
+                                                    <span className="font-semibold">Click to upload</span> or drag and drop
+                                                </p>
+                                                <p className="text-xs text-mocha-400">SVG, PNG, JPG or GIF</p>
+                                            </div>
+                                            <input
+                                                type="file"
+                                                className="hidden"
+                                                accept="image/*"
+                                                onChange={handleImageSelect}
+                                            />
+                                        </label>
+                                    </div>
+                                </div>
                             </div>
+
                             <div>
                                 <label className="block text-sm font-medium text-mocha-700 mb-1">Description</label>
                                 <textarea

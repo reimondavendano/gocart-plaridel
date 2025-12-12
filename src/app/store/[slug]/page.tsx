@@ -64,7 +64,7 @@ export default function StorePage() {
                 // Fetch Products for Store
                 const { data: productsData, error: productsError } = await supabase
                     .from('products')
-                    .select('*, stores(name)')
+                    .select('*, stores(name), category:categories(slug)')
                     .eq('store_id', mappedStore.id);
 
                 if (productsData) {
@@ -79,7 +79,7 @@ export default function StorePage() {
                         price: item.price,
                         comparePrice: item.compare_price,
                         images: item.images || [],
-                        category: item.category_slug, // Assuming simple mapping for now
+                        category: item.category?.slug || 'uncategorized',
                         stock: item.stock,
                         inStock: item.in_stock,
                         rating: item.rating,
@@ -118,7 +118,7 @@ export default function StorePage() {
     const deals = products.filter(p => p.comparePrice && p.comparePrice > p.price).slice(0, 4);
 
     // Get unique categories from store's products
-    const categories = ['all', ...Array.from(new Set(products.map(p => p.category)))];
+    const categories = ['all', ...Array.from(new Set(products.map(p => p.category).filter(Boolean)))];
 
     // Filter and Sort Logic
     const filteredProducts = products

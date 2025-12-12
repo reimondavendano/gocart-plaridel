@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppSelector } from '@/store';
 import { supabase } from '@/lib/supabase';
+import { uploadProductImage } from '@/lib/storage';
 import {
     ArrowLeft, Upload, X, Image as ImageIcon, DollarSign,
     Package, Tag, FileText, Sparkles, Save, Loader2
@@ -11,6 +12,7 @@ import {
 import Link from 'next/link';
 
 interface Category {
+    id: string;
     slug: string;
     name: string;
 }
@@ -21,6 +23,7 @@ export default function NewProductPage() {
     const [loading, setLoading] = useState(false);
     const [categories, setCategories] = useState<Category[]>([]);
     const [storeId, setStoreId] = useState<string | null>(null);
+    const [storeSlug, setStoreSlug] = useState<string | null>(null);
 
     // Form state
     const [name, setName] = useState('');
@@ -31,6 +34,7 @@ export default function NewProductPage() {
     const [stock, setStock] = useState('0');
     const [tags, setTags] = useState('');
     const [images, setImages] = useState<string[]>([]);
+    const [imageFiles, setImageFiles] = useState<File[]>([]);
     const [isFeatured, setIsFeatured] = useState(false);
     const [isNew, setIsNew] = useState(true);
 
@@ -44,19 +48,20 @@ export default function NewProductPage() {
             if (currentUser?.id) {
                 const { data: store } = await supabase
                     .from('stores')
-                    .select('id')
+                    .select('id, slug')
                     .eq('seller_id', currentUser.id)
                     .single();
 
                 if (store) {
                     setStoreId(store.id);
+                    setStoreSlug(store.slug);
                 }
             }
 
             // Fetch categories
             const { data: categoriesData } = await supabase
                 .from('categories')
-                .select('slug, name')
+                .select('id, slug, name')
                 .order('name');
 
             if (categoriesData) {
@@ -78,9 +83,12 @@ export default function NewProductPage() {
         const files = e.target.files;
         if (!files) return;
 
-        // For now, we'll use placeholder URLs
-        // In production, you'd upload to Supabase Storage
-        Array.from(files).forEach((file) => {
+        // Store files for upload later
+        const newFiles = Array.from(files);
+        setImageFiles(prev => [...prev, ...newFiles]);
+
+        // Create preview URLs
+        newFiles.forEach((file) => {
             const reader = new FileReader();
             reader.onloadend = () => {
                 setImages(prev => [...prev, reader.result as string]);
@@ -91,17 +99,30 @@ export default function NewProductPage() {
 
     const removeImage = (index: number) => {
         setImages(prev => prev.filter((_, i) => i !== index));
+        setImageFiles(prev => prev.filter((_, i) => i !== index));
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!storeId) {
+        if (!storeId || !storeSlug) {
             alert('Store not found. Please create a store first.');
             return;
         }
 
         setLoading(true);
         try {
+            // Upload images first
+            const uploadedUrls: string[] = [];
+
+            if (imageFiles.length > 0) {
+                for (const file of imageFiles) {
+                    const url = await uploadProductImage(file, storeSlug, false, category);
+                    if (url) {
+                        uploadedUrls.push(url);
+                    }
+                }
+            }
+
             const slug = generateSlug(name) + '-' + Date.now().toString(36);
             const tagsArray = tags.split(',').map(t => t.trim()).filter(Boolean);
 
@@ -114,10 +135,10 @@ export default function NewProductPage() {
                     description,
                     price: parseFloat(price),
                     compare_price: comparePrice ? parseFloat(comparePrice) : null,
-                    category_slug: category || null,
+                    category_id: categories.find(c => c.slug === category)?.id || null,
                     stock: parseInt(stock),
                     in_stock: parseInt(stock) > 0,
-                    images: images.length > 0 ? images : ['https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800'],
+                    images: uploadedUrls.length > 0 ? uploadedUrls : ['https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800'],
                     tags: tagsArray,
                     is_featured: isFeatured,
                     is_new: isNew,

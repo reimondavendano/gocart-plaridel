@@ -30,25 +30,44 @@ export default function AdminSellersPage() {
 
     const fetchSellers = async () => {
         try {
-            const { data, error } = await supabase
+            // Fetch users with role 'seller'
+            const { data: usersData, error: usersError } = await supabase
                 .from('users')
                 .select(`
-                    id, name, email, avatar, phone, role, created_at,
-                    plan:plans(name),
+                    id, email, role, created_at,
                     stores(id, name, status)
                 `)
                 .eq('role', 'seller')
                 .order('created_at', { ascending: false });
 
-            if (error) throw error;
+            if (usersError) throw usersError;
 
-            // Transform data to match interface (Supabase returns arrays for joins)
-            const formattedSellers: Seller[] = (data || []).map((seller: any) => ({
-                ...seller,
-                plan: Array.isArray(seller.plan) && seller.plan.length > 0 ? seller.plan[0] : seller.plan
+            // Fetch profile data for each seller
+            const sellersWithProfiles = await Promise.all((usersData || []).map(async (user: any) => {
+                const { data: profileData } = await supabase
+                    .from('user_profiles')
+                    .select('name, avatar, phone, plan:plans(name)')
+                    .eq('user_id', user.id)
+                    .single();
+
+                return {
+                    id: user.id,
+                    email: user.email,
+                    role: user.role,
+                    created_at: user.created_at,
+                    stores: user.stores,
+                    name: profileData?.name || 'Unknown',
+                    avatar: profileData?.avatar,
+                    phone: profileData?.phone,
+                    plan: profileData?.plan
+                        ? (Array.isArray(profileData.plan)
+                            ? (profileData.plan.length > 0 ? profileData.plan[0] : null)
+                            : profileData.plan) as { name: string } | null
+                        : null
+                };
             }));
 
-            setSellers(formattedSellers);
+            setSellers(sellersWithProfiles as Seller[]);
         } catch (error) {
             console.error('Error fetching sellers:', error);
         } finally {
