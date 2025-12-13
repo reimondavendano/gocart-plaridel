@@ -5,7 +5,7 @@ import { useAppSelector } from '@/store';
 import { supabase } from '@/lib/supabase';
 import {
     Search, Plus, Send, CheckCircle, Clock,
-    MessageSquare, MoreVertical, X, Loader2
+    MessageSquare, MoreVertical, X, Loader2, Store as StoreIcon, User
 } from 'lucide-react';
 
 interface Conversation {
@@ -14,14 +14,25 @@ interface Conversation {
     status: 'open' | 'closed' | 'pending';
     created_at: string;
     updated_at: string;
+    user_id: string; // Customer ID (for inquiries) or User ID (for support)
+    store_id: string | null;
+    product_id: string | null;
     last_message?: string;
+    // For Inquiries
+    customer?: {
+        email: string;
+        profile?: {
+            name: string;
+            avatar: string;
+        };
+    };
 }
 
 interface Message {
     id: string;
     conversation_id: string;
     sender_id: string;
-    sender_role: 'user' | 'admin';
+    sender_role: 'user' | 'admin' | 'seller';
     content: string;
     created_at: string;
     is_read: boolean;
@@ -29,45 +40,133 @@ interface Message {
 
 export default function SellerMessagesPage() {
     const { currentUser } = useAppSelector((state) => state.user);
+    const [activeTab, setActiveTab] = useState<'inquiries' | 'support'>('inquiries');
+    const [storeId, setStoreId] = useState<string | null>(null);
+
     const [conversations, setConversations] = useState<Conversation[]>([]);
     const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
     const [messages, setMessages] = useState<Message[]>([]);
     const [newMessage, setNewMessage] = useState('');
+
     const [loadingConversations, setLoadingConversations] = useState(true);
     const [loadingMessages, setLoadingMessages] = useState(false);
+
+    // Support Modal
     const [isCreating, setIsCreating] = useState(false);
     const [newSubject, setNewSubject] = useState('');
     const [initialMessage, setInitialMessage] = useState('');
+
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
+    // Fetch Store ID
+    useEffect(() => {
+        if (currentUser?.id) {
+            async function fetchStore() {
+                const { data } = await supabase
+                    .from('stores')
+                    .select('id')
+                    .eq('owner_id', currentUser!.id)
+                    .single();
+                if (data) setStoreId(data.id);
+            }
+            fetchStore();
+        }
+    }, [currentUser]);
+
+    // Fetch Conversations
     useEffect(() => {
         if (currentUser?.id) {
             fetchConversations();
         }
-    }, [currentUser?.id]);
+    }, [currentUser, activeTab, storeId]);
 
+    // Fetch Messages & Read Status
     useEffect(() => {
         if (selectedConversation) {
             fetchMessages(selectedConversation);
-            // Mark as read
             markAsRead(selectedConversation);
+
+            // Subscribe
+            const channel = supabase
+                .channel(`seller_msgs:${selectedConversation}`)
+                .on('postgres_changes', {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'messages',
+                    filter: `conversation_id=eq.${selectedConversation}`
+                }, (payload) => {
+                    setMessages(prev => [...prev, payload.new as Message]);
+                })
+                .subscribe();
+
+            return () => {
+                supabase.removeChannel(channel);
+            };
         }
     }, [selectedConversation]);
 
-    // Auto-scroll to bottom of messages
+    // Scroll
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
 
     const fetchConversations = async () => {
+        setLoadingConversations(true);
         try {
-            const { data, error } = await supabase
+            let query = supabase
                 .from('conversations')
-                .select('*')
-                .eq('user_id', currentUser?.id)
+                .select(`
+                    *,
+                    user:users!user_id(email)
+                `) // Basic select, we'll fetch profiles manually if needed or via complicated join
                 .order('updated_at', { ascending: false });
 
-            if (data) setConversations(data);
+            if (activeTab === 'inquiries') {
+                if (!storeId) {
+                    setConversations([]);
+                    setLoadingConversations(false);
+                    return;
+                }
+                // Fetch inquiries for my store
+                query = query.eq('store_id', storeId);
+            } else {
+                // Fetch support threads (my user_id, no store_id or store_id is null? usually just user_id)
+                // Existing logic was eq user_id.
+                // But wait, if I inquire a store, I AM a user_id too.
+                // Support threads should probably be distiguished by Store ID being Null? Or a different flag.
+                // Schema has 'store_id'. For Support, store_id is likely NULL if it's User<->Admin.
+                query = query.eq('user_id', currentUser!.id).is('store_id', null);
+            }
+
+            const { data, error } = await query;
+            if (error) throw error;
+
+            // If inquiries, fetch profiles for customers
+            let mappedConversations: Conversation[] = [];
+            if (data) {
+                // Fetch profiles for users in these conversations
+                const userIds = data.map((c: any) => c.user_id);
+                let profilesMap: Record<string, any> = {};
+
+                if (userIds.length > 0) {
+                    const { data: profiles } = await supabase
+                        .from('user_profiles')
+                        .select('user_id, name, avatar')
+                        .in('user_id', userIds);
+
+                    profiles?.forEach(p => { profilesMap[p.user_id] = p; });
+                }
+
+                mappedConversations = data.map((c: any) => ({
+                    ...c,
+                    customer: {
+                        email: c.user?.email,
+                        profile: profilesMap[c.user_id]
+                    }
+                }));
+            }
+
+            setConversations(mappedConversations);
         } catch (error) {
             console.error('Error fetching conversations:', error);
         } finally {
@@ -93,13 +192,19 @@ export default function SellerMessagesPage() {
     };
 
     const markAsRead = async (conversationId: string) => {
+        if (!currentUser) return;
+
+        // If Inquiries: Mark messages from 'user' as read.
+        // If Support: Mark messages from 'admin' as read.
+
+        const targetRole = activeTab === 'inquiries' ? 'user' : 'admin';
+
         try {
-            // Mark messages from admin as read
             await supabase
                 .from('messages')
                 .update({ is_read: true })
                 .eq('conversation_id', conversationId)
-                .eq('sender_role', 'admin');
+                .eq('sender_role', targetRole);
         } catch (error) {
             console.error('Error marking read:', error);
         }
@@ -109,6 +214,8 @@ export default function SellerMessagesPage() {
         e.preventDefault();
         if (!newMessage.trim() || !selectedConversation || !currentUser) return;
 
+        const senderRole = activeTab === 'inquiries' ? 'seller' : 'user';
+
         try {
             const { data, error } = await supabase
                 .from('messages')
@@ -116,7 +223,7 @@ export default function SellerMessagesPage() {
                     {
                         conversation_id: selectedConversation,
                         sender_id: currentUser.id,
-                        sender_role: 'user',
+                        sender_role: senderRole,
                         content: newMessage.trim()
                     }
                 ])
@@ -127,32 +234,33 @@ export default function SellerMessagesPage() {
                 setMessages([...messages, data as Message]);
                 setNewMessage('');
 
-                // Update conversation updated_at
                 await supabase
                     .from('conversations')
                     .update({ updated_at: new Date().toISOString() })
                     .eq('id', selectedConversation);
 
-                fetchConversations(); // Refresh list to update order/timestamps
+                // Refresh list to bump to top
+                fetchConversations();
             }
         } catch (error) {
             console.error('Error sending message:', error);
         }
     };
 
-    const handleCreateConversation = async (e: React.FormEvent) => {
+    // Only for Support tab
+    const handleCreateSupportTicket = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!newSubject.trim() || !initialMessage.trim() || !currentUser) return;
 
         try {
-            // 1. Create conversation
             const { data: thread, error: threadError } = await supabase
                 .from('conversations')
                 .insert([
                     {
                         user_id: currentUser.id,
                         subject: newSubject.trim(),
-                        status: 'open'
+                        status: 'open',
+                        store_id: null // Explicitly null for support
                     }
                 ])
                 .select()
@@ -161,7 +269,6 @@ export default function SellerMessagesPage() {
             if (threadError) throw threadError;
 
             if (thread) {
-                // 2. Create initial message
                 const { error: msgError } = await supabase
                     .from('messages')
                     .insert([
@@ -182,194 +289,205 @@ export default function SellerMessagesPage() {
                 setSelectedConversation(thread.id);
             }
         } catch (error) {
-            console.error('Error creating conversation:', error);
+            console.error('Error creating ticket:', error);
         }
-    };
-
-    const formatTime = (dateStr: string) => {
-        return new Date(dateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    };
-
-    const formatDate = (dateStr: string) => {
-        return new Date(dateStr).toLocaleDateString([], { month: 'short', day: 'numeric' });
     };
 
     const currentThread = conversations.find(c => c.id === selectedConversation);
 
     return (
-        <div className="h-[calc(100vh-140px)] flex bg-white border border-mocha-200 rounded-2xl overflow-hidden shadow-sm">
-            {/* Sidebar (List) */}
-            <div className="w-80 border-r border-mocha-100 flex flex-col">
-                <div className="p-4 border-b border-mocha-100 flex items-center justify-between">
-                    <h2 className="font-bold text-mocha-900">Messages</h2>
-                    <button
-                        onClick={() => setIsCreating(true)}
-                        className="p-2 bg-mocha-100 hover:bg-mocha-200 text-mocha-700 rounded-lg transition-colors"
-                    >
-                        <Plus className="w-5 h-5" />
-                    </button>
-                </div>
+        <div className="h-[calc(100vh-140px)] flex flex-col bg-white border border-mocha-200 rounded-2xl overflow-hidden shadow-sm">
+            {/* Tabs */}
+            <div className="flex border-b border-mocha-100">
+                <button
+                    onClick={() => { setActiveTab('inquiries'); setSelectedConversation(null); }}
+                    className={`flex-1 py-4 text-sm font-medium transition-colors border-b-2 ${activeTab === 'inquiries' ? 'border-mocha-600 text-mocha-900 bg-mocha-50' : 'border-transparent text-mocha-500 hover:text-mocha-700'}`}
+                >
+                    Customer Inquiries
+                </button>
+                <button
+                    onClick={() => { setActiveTab('support'); setSelectedConversation(null); }}
+                    className={`flex-1 py-4 text-sm font-medium transition-colors border-b-2 ${activeTab === 'support' ? 'border-mocha-600 text-mocha-900 bg-mocha-50' : 'border-transparent text-mocha-500 hover:text-mocha-700'}`}
+                >
+                    Admin Support
+                </button>
+            </div>
 
-                {/* Search */}
-                <div className="p-4 border-b border-mocha-100">
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-mocha-400" />
-                        <input
-                            type="text"
-                            placeholder="Search messages..."
-                            className="w-full pl-9 pr-4 py-2 bg-mocha-50 border border-mocha-200 rounded-lg text-sm text-mocha-900 focus:outline-none focus:border-mocha-400"
-                        />
+            <div className="flex-1 flex overflow-hidden">
+                {/* Sidebar */}
+                <div className={`w-full md:w-80 lg:w-96 flex-shrink-0 border-r border-mocha-200 bg-white flex flex-col ${selectedConversation ? 'hidden md:flex' : 'flex'}`}>
+                    <div className="p-4 border-b border-mocha-100 flex items-center justify-between">
+                        <h2 className="font-bold text-mocha-900">
+                            {activeTab === 'inquiries' ? 'Inquiries' : 'Tickets'}
+                        </h2>
+                        {activeTab === 'support' && (
+                            <button
+                                onClick={() => setIsCreating(true)}
+                                className="p-2 hover:bg-mocha-100 rounded-lg text-mocha-600 transition-colors"
+                            >
+                                <Plus className="w-5 h-5" />
+                            </button>
+                        )}
+                    </div>
+
+                    <div className="p-4 border-b border-mocha-100">
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-mocha-400" />
+                            <input
+                                type="text"
+                                placeholder="Search..."
+                                className="w-full pl-9 pr-4 py-2 bg-mocha-50 border-transparent focus:bg-white focus:border-mocha-200 rounded-xl text-sm transition-all focus:outline-none focus:ring-2 focus:ring-mocha-500/20"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto custom-scrollbar">
+                        {loadingConversations ? (
+                            <div className="flex items-center justify-center py-8 text-mocha-400">
+                                <Loader2 className="w-6 h-6 animate-spin" />
+                            </div>
+                        ) : conversations.length === 0 ? (
+                            <div className="text-center py-8 text-mocha-400">
+                                <p>No {activeTab === 'inquiries' ? 'inquiries' : 'tickets'} found</p>
+                            </div>
+                        ) : (
+                            conversations.map(conv => (
+                                <button
+                                    key={conv.id}
+                                    onClick={() => setSelectedConversation(conv.id)}
+                                    className={`w-full text-left p-4 border-b border-mocha-50 hover:bg-mocha-50 transition-colors ${selectedConversation === conv.id ? 'bg-mocha-50 border-l-4 border-l-mocha-600' : ''}`}
+                                >
+                                    <div className="flex justify-between items-start mb-1">
+                                        <h3 className={`font-semibold text-sm truncate pr-2 ${selectedConversation === conv.id ? 'text-mocha-900' : 'text-mocha-700'}`}>
+                                            {activeTab === 'inquiries'
+                                                ? (conv.customer?.profile?.name || conv.customer?.email || 'Customer')
+                                                : conv.subject}
+                                        </h3>
+                                        <span className="text-[10px] text-mocha-400 whitespace-nowrap flex-shrink-0">
+                                            {new Date(conv.updated_at).toLocaleDateString()}
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-mocha-500 line-clamp-2">
+                                        {activeTab === 'inquiries' ? conv.subject : (conv.last_message || 'No messages')}
+                                    </p>
+                                    {activeTab === 'inquiries' && conv.product_id && (
+                                        <span className="inline-block mt-2 px-2 py-0.5 bg-mocha-100 text-mocha-600 text-[10px] rounded-md">
+                                            Product Inquiry
+                                        </span>
+                                    )}
+                                </button>
+                            ))
+                        )}
                     </div>
                 </div>
 
-                {/* Conversation List */}
-                <div className="flex-1 overflow-y-auto">
-                    {loadingConversations ? (
-                        <div className="flex items-center justify-center h-40">
-                            <Loader2 className="w-6 h-6 animate-spin text-mocha-400" />
-                        </div>
-                    ) : conversations.length === 0 ? (
-                        <div className="p-6 text-center text-mocha-400">
-                            <MessageSquare className="w-12 h-12 mx-auto mb-2 opacity-30" />
-                            <p className="text-sm">No messages yet</p>
-                            <button
-                                onClick={() => setIsCreating(true)}
-                                className="mt-2 text-mocha-600 text-sm font-medium hover:underline"
-                            >
-                                Start a conversation
-                            </button>
-                        </div>
+                {/* Chat Area */}
+                <div className={`flex-1 flex flex-col bg-mocha-50/50 ${!selectedConversation ? 'hidden md:flex' : 'flex'}`}>
+                    {selectedConversation ? (
+                        <>
+                            {/* Chat Header */}
+                            <div className="h-16 px-6 border-b border-mocha-200 bg-white flex items-center justify-between shrink-0">
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        onClick={() => setSelectedConversation(null)}
+                                        className="md:hidden p-2 -ml-2 hover:bg-mocha-100 rounded-full text-mocha-500"
+                                    >
+                                        <X className="w-5 h-5" />
+                                    </button>
+                                    <div>
+                                        <h3 className="font-bold text-mocha-900">
+                                            {activeTab === 'inquiries'
+                                                ? (currentThread?.customer?.profile?.name || currentThread?.customer?.email || 'Customer')
+                                                : currentThread?.subject}
+                                        </h3>
+                                        <div className="flex items-center gap-2 text-xs text-mocha-500">
+                                            <span className={`w-2 h-2 rounded-full ${currentThread?.status === 'open' ? 'bg-green-500' : 'bg-mocha-300'}`} />
+                                            {currentThread?.status}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Messages */}
+                            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                                {messages.map((msg) => {
+                                    /* 
+                                     Determine alignment:
+                                     On 'inquiries' tab: I am 'seller'. So 'seller' msgs are Mine (Right). 'user' msgs are Theirs (Left).
+                                     On 'support' tab: I am 'user'. So 'user' msgs are Mine (Right). 'admin' msgs are Theirs (Left).
+                                    */
+                                    let isMe = false;
+                                    if (activeTab === 'inquiries') {
+                                        isMe = msg.sender_role === 'seller';
+                                    } else {
+                                        isMe = msg.sender_role === 'user';
+                                    }
+
+                                    return (
+                                        <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                                            <div className={`max-w-[80%] rounded-2xl px-4 py-3 ${isMe
+                                                    ? 'bg-mocha-600 text-white rounded-br-none'
+                                                    : 'bg-white text-mocha-800 shadow-sm border border-mocha-100 rounded-bl-none'
+                                                }`}>
+                                                <p className="text-sm leading-relaxed">{msg.content}</p>
+                                                <p className={`text-[10px] mt-1 text-right ${isMe ? 'text-mocha-200' : 'text-mocha-400'}`}>
+                                                    {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                                <div ref={messagesEndRef} />
+                            </div>
+
+                            {/* Input */}
+                            <div className="p-4 bg-white border-t border-mocha-200">
+                                <form onSubmit={handleSendMessage} className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        value={newMessage}
+                                        onChange={(e) => setNewMessage(e.target.value)}
+                                        placeholder="Type your reply..."
+                                        className="flex-1 px-4 py-3 bg-mocha-50 border-transparent focus:bg-white focus:border-mocha-200 rounded-xl transition-all focus:outline-none focus:ring-2 focus:ring-mocha-500/20"
+                                    />
+                                    <button
+                                        type="submit"
+                                        disabled={!newMessage.trim()}
+                                        className="px-4 py-2 bg-mocha-600 text-white rounded-xl hover:bg-mocha-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                    >
+                                        <Send className="w-5 h-5" />
+                                    </button>
+                                </form>
+                            </div>
+                        </>
                     ) : (
-                        conversations.map((chat) => (
-                            <button
-                                key={chat.id}
-                                onClick={() => setSelectedConversation(chat.id)}
-                                className={`w-full p-4 text-left border-b border-mocha-50 hover:bg-mocha-50 transition-colors flex flex-col gap-1 ${selectedConversation === chat.id ? 'bg-mocha-50' : ''
-                                    }`}
-                            >
-                                <div className="flex justify-between items-start">
-                                    <span className="font-semibold text-mocha-900 truncate pr-2">{chat.subject}</span>
-                                    <span className="text-xs text-mocha-400 whitespace-nowrap">{formatDate(chat.updated_at)}</span>
-                                </div>
-                                <div className="flex justify-between items-center">
-                                    <span className={`text-xs px-2 py-0.5 rounded-full capitalize ${chat.status === 'open' ? 'bg-green-100 text-green-700' :
-                                            chat.status === 'closed' ? 'bg-gray-100 text-gray-700' :
-                                                'bg-yellow-100 text-yellow-700'
-                                        }`}>
-                                        {chat.status}
-                                    </span>
-                                </div>
-                            </button>
-                        ))
+                        <div className="flex-1 flex flex-col items-center justify-center text-mocha-400">
+                            <MessageSquare className="w-16 h-16 mb-4 opacity-20" />
+                            <p>Select a conversation to view messages</p>
+                        </div>
                     )}
                 </div>
             </div>
 
-            {/* Chat Area */}
-            <div className="flex-1 flex flex-col bg-mocha-50/30">
-                {selectedConversation ? (
-                    <>
-                        {/* Chat Header */}
-                        <div className="px-6 py-4 bg-white border-b border-mocha-100 flex items-center justify-between">
-                            <div>
-                                <h3 className="font-bold text-mocha-900">{currentThread?.subject}</h3>
-                                <p className="text-xs text-mocha-500 flex items-center gap-1">
-                                    Support Ticket #{currentThread?.id.slice(0, 8)}
-                                </p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <span className={`px-3 py-1 rounded-full text-xs font-medium capitalize ${currentThread?.status === 'open' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
-                                    }`}>
-                                    {currentThread?.status}
-                                </span>
-                            </div>
-                        </div>
-
-                        {/* Messages */}
-                        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                            {loadingMessages ? (
-                                <div className="flex justify-center py-10">
-                                    <Loader2 className="w-8 h-8 animate-spin text-mocha-400" />
-                                </div>
-                            ) : (
-                                messages.map((msg) => {
-                                    const isMe = msg.sender_role === 'user';
-                                    return (
-                                        <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                                            <div className={`max-w-[80%] ${isMe ? 'items-end' : 'items-start'} flex flex-col`}>
-                                                <div className={`p-4 rounded-2xl ${isMe
-                                                        ? 'bg-mocha-600 text-white rounded-tr-sm'
-                                                        : 'bg-white border border-mocha-200 text-mocha-800 rounded-tl-sm shadow-sm'
-                                                    }`}>
-                                                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
-                                                </div>
-                                                <div className="flex items-center gap-2 mt-1 px-1">
-                                                    <span className="text-xs text-mocha-400">{formatTime(msg.created_at)}</span>
-                                                    {!isMe && <span className="text-xs font-medium text-mocha-500">Support Team</span>}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    );
-                                })
-                            )}
-                            <div ref={messagesEndRef} />
-                        </div>
-
-                        {/* Input Area */}
-                        <div className="p-4 bg-white border-t border-mocha-100">
-                            <form onSubmit={handleSendMessage} className="flex items-end gap-3">
-                                <div className="flex-1 relative">
-                                    <textarea
-                                        value={newMessage}
-                                        onChange={(e) => setNewMessage(e.target.value)}
-                                        placeholder="Type your message..."
-                                        className="w-full px-4 py-3 bg-mocha-50 border border-mocha-200 rounded-xl focus:outline-none focus:border-mocha-400 resize-none max-h-32 min-h-[50px]"
-                                        rows={1}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter' && !e.shiftKey) {
-                                                e.preventDefault();
-                                                handleSendMessage(e);
-                                            }
-                                        }}
-                                    />
-                                </div>
-                                <button
-                                    type="submit"
-                                    disabled={!newMessage.trim()}
-                                    className="p-3 bg-mocha-600 hover:bg-mocha-700 text-white rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    <Send className="w-5 h-5" />
-                                </button>
-                            </form>
-                        </div>
-                    </>
-                ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center text-mocha-400">
-                        <MessageSquare className="w-16 h-16 mb-4 opacity-20" />
-                        <p className="text-lg font-medium">Select a conversation to start messaging</p>
-                    </div>
-                )}
-            </div>
-
-            {/* Create Conversation Modal */}
-            {isCreating && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl overflow-hidden animate-in zoom-in-95">
-                        <div className="flex items-center justify-between p-4 border-b border-mocha-100 bg-mocha-50">
-                            <h3 className="font-bold text-mocha-900">New Message to Support</h3>
-                            <button onClick={() => setIsCreating(false)} className="p-1 hover:bg-mocha-100 rounded-full transition-colors">
-                                <X className="w-5 h-5 text-mocha-500" />
+            {/* Support Ticket Modal for Admin Tab */}
+            {isCreating && activeTab === 'support' && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                    <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-xl">
+                        <div className="p-4 border-b border-mocha-100 flex items-center justify-between">
+                            <h3 className="font-bold text-mocha-900">New Support Ticket</h3>
+                            <button onClick={() => setIsCreating(false)} className="p-1 hover:bg-mocha-100 rounded text-mocha-500">
+                                <X className="w-5 h-5" />
                             </button>
                         </div>
-                        <form onSubmit={handleCreateConversation} className="p-6 space-y-4">
+                        <form onSubmit={handleCreateSupportTicket} className="p-4 space-y-4">
                             <div>
                                 <label className="block text-sm font-medium text-mocha-700 mb-1">Subject</label>
                                 <input
                                     type="text"
                                     value={newSubject}
                                     onChange={(e) => setNewSubject(e.target.value)}
-                                    placeholder="e.g., Order Issue #12345"
-                                    className="w-full px-4 py-2 border border-mocha-200 rounded-lg focus:outline-none focus:border-mocha-500"
+                                    className="w-full px-3 py-2 border border-mocha-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-mocha-500"
+                                    placeholder="Brief description of the issue"
                                     required
                                 />
                             </div>
@@ -378,20 +496,14 @@ export default function SellerMessagesPage() {
                                 <textarea
                                     value={initialMessage}
                                     onChange={(e) => setInitialMessage(e.target.value)}
-                                    placeholder="Describe your concern..."
-                                    className="w-full px-4 py-2 border border-mocha-200 rounded-lg focus:outline-none focus:border-mocha-500 h-32 resize-none"
+                                    className="w-full px-3 py-2 border border-mocha-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-mocha-500 h-32 resize-none"
+                                    placeholder="Describe your issue in detail..."
                                     required
                                 />
                             </div>
-                            <div className="flex justify-end pt-2">
-                                <button
-                                    type="submit"
-                                    className="px-6 py-2 bg-mocha-600 hover:bg-mocha-700 text-white font-medium rounded-lg transition-colors flex items-center gap-2"
-                                >
-                                    <Send className="w-4 h-4" />
-                                    Send Message
-                                </button>
-                            </div>
+                            <button type="submit" className="w-full py-3 bg-mocha-600 text-white rounded-xl font-medium hover:bg-mocha-700 transition-colors">
+                                Create Ticket
+                            </button>
                         </form>
                     </div>
                 </div>

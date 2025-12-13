@@ -7,12 +7,27 @@ import ProductCard from '@/components/product/ProductCard';
 import { useAppDispatch, useAppSelector } from '@/store';
 import { fetchProducts } from '@/store/slices/productSlice';
 
-const tabs = ['All', 'Electronics', 'Fashion', 'Trending'];
+
 
 export default function FeaturedProducts() {
     const dispatch = useAppDispatch();
     const { products, isLoading } = useAppSelector((state) => state.product);
     const [activeTab, setActiveTab] = useState('All');
+    const [tabs, setTabs] = useState(['All', 'Trending']);
+
+    // Derive Tabs from Products
+    useEffect(() => {
+        if (products.length > 0) {
+            // Get unique categories from products
+            const categories = Array.from(new Set(products.map(p => p.category)));
+            // Format slugs to Title Case for display
+            const formattedCats = categories.map(slug =>
+                slug.charAt(0).toUpperCase() + slug.slice(1).replace(/-/g, ' ')
+            );
+
+            setTabs(['All', ...formattedCats, 'Trending']);
+        }
+    }, [products]);
 
     useEffect(() => {
         if (products.length === 0) {
@@ -24,7 +39,7 @@ export default function FeaturedProducts() {
         ? products.filter((p) => p.isFeatured)
         : activeTab === 'Trending'
             ? [...products].sort((a, b) => b.reviewCount - a.reviewCount).slice(0, 4)
-            : products.filter((p) => p.category.toLowerCase() === activeTab.toLowerCase());
+            : products.filter((p) => p.category.toLowerCase() === activeTab.toLowerCase().replace(/\s+/g, '-'));
 
     if (isLoading && products.length === 0) {
         return <div className="py-12 text-center text-mocha-600">Loading hot picks...</div>;

@@ -40,16 +40,30 @@ export default function CategoriesSection() {
                     return;
                 }
 
+                // Fetch all active products to calculate counts
+                const { data: productsData } = await supabase
+                    .from('products')
+                    .select('category_id')
+                    .eq('is_disabled', false)
+                    .eq('is_disabled_by_admin', false);
+
                 if (data) {
-                    const mappedCategories: Category[] = data.map((item: any) => ({
-                        id: item.id,
-                        name: item.name,
-                        slug: item.slug,
-                        icon: item.icon,
-                        image: item.image,
-                        description: item.description,
-                        productCount: item.product_count,
-                    }));
+                    const mappedCategories: Category[] = data.map((item: any) => {
+                        // Calculate count for this category
+                        const count = productsData?.filter(
+                            (p: any) => p.category_id === item.id
+                        ).length || 0;
+
+                        return {
+                            id: item.id,
+                            name: item.name,
+                            slug: item.slug,
+                            icon: item.icon,
+                            image: item.image,
+                            description: item.description,
+                            productCount: count,
+                        };
+                    });
                     setCategories(mappedCategories);
                 }
             } catch (err) {

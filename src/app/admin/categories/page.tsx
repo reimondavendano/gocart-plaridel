@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { uploadToStorage } from '@/lib/storage';
+import { checkImageContent } from '@/lib/moderation';
 import {
     Tag, Plus, Edit, Trash2, Search, Package, Image as ImageIcon,
     X, Save, Loader2, Upload
@@ -37,11 +38,18 @@ export default function AdminCategoriesPage() {
         try {
             const { data, error } = await supabase
                 .from('categories')
-                .select('*')
+                .select('*, products(count)')
                 .order('name');
 
             if (error) throw error;
-            setCategories(data || []);
+
+            // Map the dynamic count
+            const mappedCategories = (data || []).map((cat: any) => ({
+                ...cat,
+                product_count: cat.products?.[0]?.count || 0
+            }));
+
+            setCategories(mappedCategories);
         } catch (error) {
             console.error('Error fetching categories:', error);
         } finally {
@@ -95,11 +103,22 @@ export default function AdminCategoriesPage() {
 
             // Upload image if selected
             if (imageFile) {
-                const { url } = await uploadToStorage(imageFile, {
+                // 1. Content Moderation Check
+                const moderationError = await checkImageContent(imageFile);
+                if (moderationError) {
+                    alert(moderationError);
+                    setSaving(false);
+                    return;
+                }
+
+                // 2. Upload to Storage
+                const { url, error: uploadError } = await uploadToStorage(imageFile, {
                     isAdmin: true,
                     folder: 'categories',
                     fileName: `category_${Date.now()}_${imageFile.name.replace(/[^a-zA-Z0-9.]/g, '')}`
                 });
+
+                if (uploadError) throw uploadError;
                 if (url) imageUrl = url;
             }
 
@@ -133,8 +152,13 @@ export default function AdminCategoriesPage() {
             if (!error) {
                 setCategories(categories.filter(c => c.id !== id));
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error deleting category:', error);
+            if (error.code === '23503') { // Postgres ForeignKeyViolation
+                alert('Cannot delete this category because it has products associated with it. Please delete or reassign the products first.');
+            } else {
+                alert('Failed to delete category: ' + (error.message || 'Unknown error'));
+            }
         }
     };
 

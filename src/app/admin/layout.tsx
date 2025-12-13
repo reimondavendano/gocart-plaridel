@@ -6,16 +6,20 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
     LayoutDashboard, Store, Users, Package, ShoppingCart,
     Settings, LogOut, Menu, X, ChevronDown, Bell, Search,
-    Shield, FileCheck, BarChart3, Tag, MessageSquare
+    Shield, FileCheck, BarChart3, Tag, MessageSquare, MapPin, CreditCard, Ticket, Map
 } from 'lucide-react';
 
 const sidebarLinks = [
     { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/admin/stores', label: 'Stores', icon: Store, badge: 'Pending' },
+    { href: '/admin/stores/map', label: 'Store Map', icon: Map },
     { href: '/admin/sellers', label: 'Sellers', icon: Users },
     { href: '/admin/products', label: 'Products', icon: Package },
     { href: '/admin/orders', label: 'Orders', icon: ShoppingCart },
     { href: '/admin/categories', label: 'Categories', icon: Tag },
+    { href: '/admin/locations', label: 'Locations', icon: MapPin },
+    { href: '/admin/plans', label: 'Plans', icon: CreditCard },
+    { href: '/admin/coupons', label: 'Coupons', icon: Ticket },
     { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
     { href: '/admin/messages', label: 'Messages', icon: MessageSquare },
     { href: '/admin/settings', label: 'Settings', icon: Settings },

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
     Search, ShoppingCart, User, Menu, X, Crown, Heart,
-    Bell, ChevronDown, Store, Settings, LogOut, Package
+    Bell, ChevronDown, Store, Settings, LogOut, Package, MessageSquare
 } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '@/store';
 import { selectCartCount } from '@/store/slices/cartSlice';
@@ -265,6 +265,10 @@ export default function Header() {
                                                     <Link href="/orders" className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-mocha-100 text-mocha-700">
                                                         <Package className="w-4 h-4" />
                                                         <span>My Orders</span>
+                                                    </Link>
+                                                    <Link href="/messages" className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-mocha-100 text-mocha-700">
+                                                        <MessageSquare className="w-4 h-4" />
+                                                        <span>Messages</span>
                                                     </Link>
 
                                                     {/* Dynamic Role-Based Link */}

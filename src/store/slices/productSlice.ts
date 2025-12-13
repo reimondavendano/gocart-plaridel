@@ -48,7 +48,9 @@ export const fetchProducts = createAsyncThunk('product/fetchProducts', async () 
                 name
             ),
             category:categories(slug)
-        `);
+        `)
+        .eq('is_disabled', false)
+        .eq('is_disabled_by_admin', false);
 
     if (error) {
         throw new Error(error.message);

@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { useAppSelector, useAppDispatch } from '@/store';
 import { setUser } from '@/store/slices/userSlice';
 import { supabase } from '@/lib/supabase';
+import { uploadToStorage } from '@/lib/storage';
+import { checkImageContent } from '@/lib/moderation';
 import {
     User, Mail, Phone, Camera, Save, Loader2, Shield, Crown
 } from 'lucide-react';
@@ -19,6 +21,7 @@ export default function SellerProfilePage() {
     const [email, setEmail] = useState('');
     const [phone, setPhone] = useState('');
     const [avatar, setAvatar] = useState('');
+    const [avatarFile, setAvatarFile] = useState<File | null>(null);
 
     useEffect(() => {
         if (currentUser) {
@@ -29,9 +32,17 @@ export default function SellerProfilePage() {
         }
     }, [currentUser]);
 
-    const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
+            // Check Content
+            const moderationError = await checkImageContent(file);
+            if (moderationError) {
+                alert(moderationError);
+                return;
+            }
+
+            setAvatarFile(file);
             const reader = new FileReader();
             reader.onloadend = () => {
                 setAvatar(reader.result as string);
@@ -48,12 +59,28 @@ export default function SellerProfilePage() {
         setSuccess(false);
 
         try {
+            let avatarUrl = avatar;
+
+            // Upload Avatar if new file selected
+            if (avatarFile) {
+                const { url } = await uploadToStorage(avatarFile, {
+                    folder: 'avatar',
+                    fileName: `avatar_${currentUser.id}_${Date.now()}.png`
+                });
+
+                if (url) {
+                    avatarUrl = url;
+                } else {
+                    throw new Error('Failed to upload avatar image');
+                }
+            }
+
             const { error } = await supabase
                 .from('user_profiles')
                 .update({
                     name,
                     phone,
-                    avatar,
+                    avatar: avatarUrl,
                     updated_at: new Date().toISOString()
                 })
                 .eq('user_id', currentUser.id);
@@ -65,13 +92,16 @@ export default function SellerProfilePage() {
                 ...currentUser,
                 name,
                 phone,
-                avatar
+                avatar: avatarUrl
             }));
+
+            setAvatarFile(null); // Clear file selection
 
             setSuccess(true);
             setTimeout(() => setSuccess(false), 3000);
         } catch (error) {
             console.error('Error updating profile:', error);
+            alert('Failed to update profile. Please try again.');
         } finally {
             setLoading(false);
         }

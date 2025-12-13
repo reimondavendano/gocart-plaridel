@@ -67,7 +67,8 @@ export function getStoragePath(options: UploadOptions): string {
         return `stores/${storeSlug}/${folder}`;
     }
 
-    throw new Error('Either storeSlug or isAdmin must be provided');
+    // Default fallback (e.g. for generic user avatars)
+    return `uploads/${folder}`;
 }
 
 /**
@@ -279,4 +280,34 @@ export async function uploadVerificationDoc(
     }
 
     return url;
+}
+
+/**
+ * Delete file from storage using its public URL
+ */
+export async function deleteFileFromUrl(publicUrl: string): Promise<boolean> {
+    try {
+        if (!publicUrl) return false;
+
+        // Extract path from URL
+        // URL format: .../storage/v1/object/public/gocart-assets/path/to/file.jpg
+        const urlParts = publicUrl.split('/gocart-assets/');
+        if (urlParts.length < 2) return false;
+
+        const path = urlParts[1]; // path/to/file.jpg
+
+        const { error } = await supabase.storage
+            .from('gocart-assets')
+            .remove([path]);
+
+        if (error) {
+            console.error('Error deleting file:', error);
+            return false;
+        }
+
+        return true;
+    } catch (error) {
+        console.error('Error deleting file:', error);
+        return false;
+    }
 }

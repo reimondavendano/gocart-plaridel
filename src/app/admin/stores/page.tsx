@@ -213,6 +213,54 @@ export default function AdminStoresPage() {
                 </div>
             </div>
 
+            {/* Stats Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                <div className="bg-white border border-mocha-200 rounded-2xl p-5 shadow-sm">
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center">
+                            <Store className="w-6 h-6 text-blue-600" />
+                        </div>
+                        <div>
+                            <p className="text-2xl font-bold text-mocha-900">{statusCounts.all}</p>
+                            <p className="text-sm text-mocha-500">Total Stores</p>
+                        </div>
+                    </div>
+                </div>
+                <div className="bg-white border border-mocha-200 rounded-2xl p-5 shadow-sm">
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-xl bg-yellow-100 flex items-center justify-center">
+                            <Clock className="w-6 h-6 text-yellow-600" />
+                        </div>
+                        <div>
+                            <p className="text-2xl font-bold text-mocha-900">{statusCounts.pending}</p>
+                            <p className="text-sm text-mocha-500">Pending Review</p>
+                        </div>
+                    </div>
+                </div>
+                <div className="bg-white border border-mocha-200 rounded-2xl p-5 shadow-sm">
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center">
+                            <CheckCircle className="w-6 h-6 text-green-600" />
+                        </div>
+                        <div>
+                            <p className="text-2xl font-bold text-mocha-900">{statusCounts.approved}</p>
+                            <p className="text-sm text-mocha-500">Approved</p>
+                        </div>
+                    </div>
+                </div>
+                <div className="bg-white border border-mocha-200 rounded-2xl p-5 shadow-sm">
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-xl bg-red-100 flex items-center justify-center">
+                            <XCircle className="w-6 h-6 text-red-600" />
+                        </div>
+                        <div>
+                            <p className="text-2xl font-bold text-mocha-900">{statusCounts.rejected}</p>
+                            <p className="text-sm text-mocha-500">Rejected</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             {/* Filters */}
             <div className="flex flex-col md:flex-row gap-4">
                 <div className="flex-1 relative">

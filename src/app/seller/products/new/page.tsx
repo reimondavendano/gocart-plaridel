@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAppSelector } from '@/store';
 import { supabase } from '@/lib/supabase';
 import { uploadProductImage } from '@/lib/storage';
+import { checkImageContent } from '@/lib/moderation';
 import {
     ArrowLeft, Upload, X, Image as ImageIcon, DollarSign,
     Package, Tag, FileText, Sparkles, Save, Loader2
@@ -115,6 +116,17 @@ export default function NewProductPage() {
             const uploadedUrls: string[] = [];
 
             if (imageFiles.length > 0) {
+                // 1. Content Moderation Check
+                for (const file of imageFiles) {
+                    const moderationError = await checkImageContent(file);
+                    if (moderationError) {
+                        alert(moderationError);
+                        setLoading(false);
+                        return;
+                    }
+                }
+
+                // 2. Upload Images
                 for (const file of imageFiles) {
                     const url = await uploadProductImage(file, storeSlug, false, category);
                     if (url) {

@@ -4,9 +4,10 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAppSelector } from '@/store';
 import { supabase } from '@/lib/supabase';
+import { deleteFileFromUrl } from '@/lib/storage';
 import {
-    Search, Plus, Filter, MoreVertical, Edit, Trash2, Eye,
-    Package, Image as ImageIcon, Tag, DollarSign, ChevronDown
+    Search, Plus, Edit, Trash2, Eye, Package, Image as ImageIcon,
+    ChevronDown, ShieldAlert, Ban, ToggleLeft, ToggleRight, AlertTriangle
 } from 'lucide-react';
 
 interface Product {
@@ -22,9 +23,12 @@ interface Product {
     rating: number;
     review_count: number;
     category_id: string;
-    category: { slug: string } | null; // Joined category
+    category: { slug: string } | null;
     is_featured: boolean;
     is_new: boolean;
+    is_disabled: boolean;
+    is_disabled_by_admin: boolean;
+    disabled_by_admin_notes: string | null;
     created_at: string;
 }
 
@@ -69,7 +73,12 @@ export default function SellerProductsPage() {
                     .order('created_at', { ascending: false });
 
                 if (productsData) {
-                    setProducts(productsData as any); // Type assertion needed for joined data
+                    setProducts(productsData.map(p => ({
+                        ...p,
+                        is_disabled: p.is_disabled ?? false,
+                        is_disabled_by_admin: p.is_disabled_by_admin ?? false,
+                        disabled_by_admin_notes: p.disabled_by_admin_notes ?? null
+                    })) as Product[]);
                 }
             }
 
@@ -91,6 +100,14 @@ export default function SellerProductsPage() {
 
     const handleDelete = async (productId: string) => {
         try {
+            // Find product to get images
+            const productToDelete = products.find(p => p.id === productId);
+
+            // Delete images from storage
+            if (productToDelete && productToDelete.images && productToDelete.images.length > 0) {
+                await Promise.all(productToDelete.images.map(url => deleteFileFromUrl(url)));
+            }
+
             const { error } = await supabase
                 .from('products')
                 .delete()
@@ -105,6 +122,26 @@ export default function SellerProductsPage() {
         setDeleteModal(null);
     };
 
+    // Toggle product disabled status (by seller)
+    const toggleDisabled = async (product: Product) => {
+        if (product.is_disabled_by_admin) return; // Cannot toggle if disabled by admin
+
+        try {
+            const { error } = await supabase
+                .from('products')
+                .update({ is_disabled: !product.is_disabled })
+                .eq('id', product.id);
+
+            if (!error) {
+                setProducts(products.map(p =>
+                    p.id === product.id ? { ...p, is_disabled: !p.is_disabled } : p
+                ));
+            }
+        } catch (error) {
+            console.error('Error toggling product:', error);
+        }
+    };
+
     const formatCurrency = (amount: number) => {
         return new Intl.NumberFormat('en-PH', {
             style: 'currency',
@@ -115,10 +152,13 @@ export default function SellerProductsPage() {
 
     const filteredProducts = products.filter(product => {
         const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase());
-        // Check joined category slug
         const matchesCategory = categoryFilter === 'all' || product.category?.slug === categoryFilter;
         return matchesSearch && matchesCategory;
     });
+
+    // Stats
+    const adminDisabledCount = products.filter(p => p.is_disabled_by_admin).length;
+    const sellerDisabledCount = products.filter(p => p.is_disabled && !p.is_disabled_by_admin).length;
 
     if (loading) {
         return (
@@ -193,85 +233,140 @@ export default function SellerProductsPage() {
                     </Link>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                    {filteredProducts.map((product) => (
-                        <div key={product.id} className="bg-white rounded-2xl border border-mocha-100 overflow-hidden hover:shadow-lg transition-shadow group">
-                            {/* Product Image */}
-                            <div className="relative aspect-square bg-mocha-100">
-                                {product.images?.[0] ? (
-                                    <img
-                                        src={product.images[0]}
-                                        alt={product.name}
-                                        className="w-full h-full object-cover"
-                                    />
-                                ) : (
-                                    <div className="w-full h-full flex items-center justify-center">
-                                        <ImageIcon className="w-12 h-12 text-mocha-300" />
+                <>
+                    {/* Admin Disabled Warning */}
+                    {adminDisabledCount > 0 && (
+                        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-start gap-3">
+                            <ShieldAlert className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" />
+                            <div>
+                                <h3 className="font-semibold text-red-800">{adminDisabledCount} product{adminDisabledCount > 1 ? 's' : ''} disabled by Admin</h3>
+                                <p className="text-sm text-red-700">Some of your products have been disabled by the platform administrator. Please review the notes below for each affected product.</p>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                        {filteredProducts.map((product) => (
+                            <div key={product.id} className={`bg-white rounded-2xl border overflow-hidden hover:shadow-lg transition-shadow group ${product.is_disabled_by_admin ? 'border-red-300 bg-red-50/30' :
+                                product.is_disabled ? 'border-orange-300 bg-orange-50/30' : 'border-mocha-100'
+                                }`}>
+                                {/* Admin Disabled Banner */}
+                                {product.is_disabled_by_admin && (
+                                    <div className="bg-red-100 border-b border-red-200 px-3 py-2">
+                                        <div className="flex items-center gap-2 text-red-700">
+                                            <ShieldAlert className="w-4 h-4" />
+                                            <span className="text-xs font-semibold">Disabled by Admin</span>
+                                        </div>
+                                        {product.disabled_by_admin_notes && (
+                                            <p className="text-xs text-red-600 mt-1 line-clamp-2">{product.disabled_by_admin_notes}</p>
+                                        )}
                                     </div>
                                 )}
-                                {/* Badges */}
-                                <div className="absolute top-2 left-2 flex flex-col gap-1">
-                                    {product.is_featured && (
-                                        <span className="px-2 py-1 rounded-lg bg-mocha-500 text-white text-xs font-medium">
-                                            Featured
-                                        </span>
-                                    )}
-                                    {product.is_new && (
-                                        <span className="px-2 py-1 rounded-lg bg-green-500 text-white text-xs font-medium">
-                                            New
-                                        </span>
-                                    )}
-                                    {!product.in_stock && (
-                                        <span className="px-2 py-1 rounded-lg bg-red-500 text-white text-xs font-medium">
-                                            Out of Stock
-                                        </span>
-                                    )}
-                                </div>
-                                {/* Actions Overlay */}
-                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                    <Link
-                                        href={`/product/${product.slug}`}
-                                        className="p-2 rounded-lg bg-white/90 hover:bg-white text-mocha-700 transition-colors"
-                                    >
-                                        <Eye className="w-5 h-5" />
-                                    </Link>
-                                    <Link
-                                        href={`/seller/products/${product.id}/edit`}
-                                        className="p-2 rounded-lg bg-white/90 hover:bg-white text-mocha-700 transition-colors"
-                                    >
-                                        <Edit className="w-5 h-5" />
-                                    </Link>
-                                    <button
-                                        onClick={() => setDeleteModal(product.id)}
-                                        className="p-2 rounded-lg bg-white/90 hover:bg-white text-red-600 transition-colors"
-                                    >
-                                        <Trash2 className="w-5 h-5" />
-                                    </button>
-                                </div>
-                            </div>
-                            {/* Product Info */}
-                            <div className="p-4">
-                                <div className="flex items-start justify-between gap-2">
-                                    <div className="flex-1 min-w-0">
-                                        <h3 className="font-medium text-mocha-900 truncate">{product.name}</h3>
-                                        <p className="text-sm text-mocha-500 capitalize">{product.category?.slug?.replace('-', ' ')}</p>
+                                {/* Seller Disabled Banner */}
+                                {product.is_disabled && !product.is_disabled_by_admin && (
+                                    <div className="bg-orange-100 border-b border-orange-200 px-3 py-2 flex items-center justify-between">
+                                        <div className="flex items-center gap-2 text-orange-700">
+                                            <Ban className="w-4 h-4" />
+                                            <span className="text-xs font-semibold">Product Disabled</span>
+                                        </div>
+                                        <button
+                                            onClick={() => toggleDisabled(product)}
+                                            className="text-xs text-orange-700 hover:text-orange-900 font-medium underline"
+                                        >
+                                            Enable
+                                        </button>
                                     </div>
-                                </div>
-                                <div className="flex items-center justify-between mt-3">
-                                    <div>
-                                        <span className="text-lg font-bold text-mocha-900">{formatCurrency(product.price)}</span>
-                                        {product.compare_price && (
-                                            <span className="ml-2 text-sm text-mocha-400 line-through">
-                                                {formatCurrency(product.compare_price)}
+                                )}
+                                {/* Product Image */}
+                                <div className={`relative aspect-square bg-mocha-100 ${product.is_disabled || product.is_disabled_by_admin ? 'opacity-60' : ''}`}>
+                                    {product.images?.[0] ? (
+                                        <img
+                                            src={product.images[0]}
+                                            alt={product.name}
+                                            className="w-full h-full object-cover"
+                                        />
+                                    ) : (
+                                        <div className="w-full h-full flex items-center justify-center">
+                                            <ImageIcon className="w-12 h-12 text-mocha-300" />
+                                        </div>
+                                    )}
+                                    {/* Badges */}
+                                    <div className="absolute top-2 left-2 flex flex-col gap-1">
+                                        {product.is_featured && (
+                                            <span className="px-2 py-1 rounded-lg bg-mocha-500 text-white text-xs font-medium">
+                                                Featured
+                                            </span>
+                                        )}
+                                        {product.is_new && (
+                                            <span className="px-2 py-1 rounded-lg bg-green-500 text-white text-xs font-medium">
+                                                New
+                                            </span>
+                                        )}
+                                        {!product.in_stock && (
+                                            <span className="px-2 py-1 rounded-lg bg-red-500 text-white text-xs font-medium">
+                                                Out of Stock
                                             </span>
                                         )}
                                     </div>
-                                    <span className="text-sm text-mocha-500">{product.stock} in stock</span>
+                                    {/* Actions Overlay */}
+                                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                        <Link
+                                            href={`/product/${product.slug}`}
+                                            className="p-2 rounded-lg bg-white/90 hover:bg-white text-mocha-700 transition-colors"
+                                        >
+                                            <Eye className="w-5 h-5" />
+                                        </Link>
+                                        <Link
+                                            href={`/seller/products/${product.id}/edit`}
+                                            className="p-2 rounded-lg bg-white/90 hover:bg-white text-mocha-700 transition-colors"
+                                        >
+                                            <Edit className="w-5 h-5" />
+                                        </Link>
+                                        <button
+                                            onClick={() => setDeleteModal(product.id)}
+                                            className="p-2 rounded-lg bg-white/90 hover:bg-white text-red-600 transition-colors"
+                                        >
+                                            <Trash2 className="w-5 h-5" />
+                                        </button>
+                                    </div>
+                                </div>
+                                {/* Product Info */}
+                                <div className="p-4">
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div className="flex-1 min-w-0">
+                                            <h3 className="font-medium text-mocha-900 truncate">{product.name}</h3>
+                                            <p className="text-sm text-mocha-500 capitalize">{product.category?.slug?.replace('-', ' ')}</p>
+                                        </div>
+                                        {/* Disable Toggle Button */}
+                                        {!product.is_disabled_by_admin && (
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); toggleDisabled(product); }}
+                                                className={`p-1.5 rounded-lg transition-colors ${product.is_disabled
+                                                        ? 'bg-orange-100 text-orange-600 hover:bg-orange-200'
+                                                        : 'bg-mocha-100 text-mocha-500 hover:bg-mocha-200'
+                                                    }`}
+                                                title={product.is_disabled ? 'Enable Product' : 'Disable Product'}
+                                            >
+                                                {product.is_disabled ? <ToggleLeft className="w-4 h-4" /> : <ToggleRight className="w-4 h-4" />}
+                                            </button>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center justify-between mt-3">
+                                        <div>
+                                            <span className="text-lg font-bold text-mocha-900">{formatCurrency(product.price)}</span>
+                                            {product.compare_price && (
+                                                <span className="ml-2 text-sm text-mocha-400 line-through">
+                                                    {formatCurrency(product.compare_price)}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <span className="text-sm text-mocha-500">{product.stock} in stock</span>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    ))}
-                </div>
+                        ))}
+                    </div>
+                </>
             )}
 
             {/* Delete Confirmation Modal */}
@@ -300,3 +395,4 @@ export default function SellerProductsPage() {
         </div>
     );
 }
+

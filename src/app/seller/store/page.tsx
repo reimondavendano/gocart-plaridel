@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useAppSelector } from '@/store';
 import { supabase } from '@/lib/supabase';
+import { uploadToStorage } from '@/lib/storage';
+import { checkImageContent } from '@/lib/moderation';
 import {
     Store, MapPin, Phone, Mail, Globe, Save, Loader2, Image as ImageIcon,
     CheckCircle, AlertCircle
@@ -19,8 +21,15 @@ interface StoreData {
     address: string;
     city: string;
     province: string;
+    // New Fields
+    barangay_id: string;
+    city_id: string;
+    latitude: number;
+    longitude: number;
+    // Status
     status: string;
     admin_verified: boolean;
+    slug: string;
 }
 
 export default function SellerStorePage() {
@@ -29,6 +38,12 @@ export default function SellerStorePage() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+
+    // Image Upload State
+    const [logoFile, setLogoFile] = useState<File | null>(null);
+    const [logoPreview, setLogoPreview] = useState<string | null>(null);
+    const [bannerFile, setBannerFile] = useState<File | null>(null);
+    const [bannerPreview, setBannerPreview] = useState<string | null>(null);
 
     useEffect(() => {
         if (currentUser?.id) {
@@ -53,6 +68,38 @@ export default function SellerStorePage() {
         }
     };
 
+    const handleLogoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !store) return;
+
+        const moderationError = await checkImageContent(file);
+        if (moderationError) {
+            alert(moderationError);
+            return;
+        }
+
+        setLogoFile(file);
+        const reader = new FileReader();
+        reader.onloadend = () => setLogoPreview(reader.result as string);
+        reader.readAsDataURL(file);
+    };
+
+    const handleBannerSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !store) return;
+
+        const moderationError = await checkImageContent(file);
+        if (moderationError) {
+            alert(moderationError);
+            return;
+        }
+
+        setBannerFile(file);
+        const reader = new FileReader();
+        reader.onloadend = () => setBannerPreview(reader.result as string);
+        reader.readAsDataURL(file);
+    };
+
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!store) return;
@@ -61,6 +108,29 @@ export default function SellerStorePage() {
         setMessage(null);
 
         try {
+            let logoUrl = store.logo_url;
+            let bannerUrl = store.banner_url;
+
+            // Upload Logo
+            if (logoFile) {
+                const { url } = await uploadToStorage(logoFile, {
+                    folder: 'logo',
+                    storeSlug: store.slug,
+                    fileName: `logo_${Date.now()}.png`
+                });
+                if (url) logoUrl = url;
+            }
+
+            // Upload Banner
+            if (bannerFile) {
+                const { url } = await uploadToStorage(bannerFile, {
+                    folder: 'banner',
+                    storeSlug: store.slug,
+                    fileName: `banner_${Date.now()}.png`
+                });
+                if (url) bannerUrl = url;
+            }
+
             const { error } = await supabase
                 .from('stores')
                 .update({
@@ -70,11 +140,23 @@ export default function SellerStorePage() {
                     email: store.email,
                     address: store.address,
                     city: store.city,
-                    province: store.province
+                    province: store.province,
+                    barangay_id: store.barangay_id,
+                    city_id: store.city_id,
+                    latitude: store.latitude,
+                    longitude: store.longitude,
+                    logo_url: logoUrl,
+                    banner_url: bannerUrl
                 })
                 .eq('id', store.id);
 
             if (error) throw error;
+
+            // Update local state with new URLs so subsequent saves work efficiently
+            setStore(prev => prev ? ({ ...prev, logo_url: logoUrl, banner_url: bannerUrl }) : null);
+            setLogoFile(null); // content moderated and uploaded
+            setBannerFile(null);
+
             setMessage({ type: 'success', text: 'Store details updated successfully' });
         } catch (error) {
             console.error('Error updating store:', error);
@@ -113,22 +195,22 @@ export default function SellerStorePage() {
             </div>
 
             {/* Status Banner */}
-            <div className={`p-4 rounded-xl border ${store.status === 'active'
-                    ? 'bg-green-50 border-green-200 text-green-700'
-                    : 'bg-yellow-50 border-yellow-200 text-yellow-700'
+            <div className={`p-4 rounded-xl border ${(store.status === 'active' || store.status === 'approved')
+                ? 'bg-green-50 border-green-200 text-green-700'
+                : 'bg-yellow-50 border-yellow-200 text-yellow-700'
                 } flex items-center justify-between`}>
                 <div className="flex items-center gap-3">
-                    {store.status === 'active' ? <CheckCircle className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+                    {(store.status === 'active' || store.status === 'approved') ? <CheckCircle className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
                     <div>
                         <p className="font-medium capitalize">Status: {store.status}</p>
-                        {!store.admin_verified && (
+                        {!(store.status === 'active' || store.status === 'approved') && !store.admin_verified && (
                             <p className="text-sm opacity-90">Pending Admin Verification</p>
                         )}
                     </div>
                 </div>
-                {store.status === 'active' && (
+                {(store.status === 'active' || store.status === 'approved') && (
                     <a
-                        href={`/store/${store.id}`}
+                        href={`/store/${store.slug}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-sm font-medium underline flex items-center gap-1"
@@ -154,26 +236,48 @@ export default function SellerStorePage() {
 
                     {/* Banner & Logo */}
                     <div className="relative h-48 bg-mocha-100 rounded-xl overflow-hidden group">
-                        {store.banner_url ? (
-                            <img src={store.banner_url} alt="Store Banner" className="w-full h-full object-cover" />
-                        ) : (
-                            <div className="w-full h-full flex items-center justify-center text-mocha-400">
-                                <ImageIcon className="w-12 h-12" />
-                            </div>
-                        )}
-                        <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/60 to-transparent flex items-end">
-                            <div className="relative w-20 h-20 rounded-xl bg-white p-1 border-2 border-white shadow-lg -mb-10 ml-4 group">
-                                {store.logo_url ? (
-                                    <img src={store.logo_url} alt="Store Logo" className="w-full h-full object-cover rounded-lg" />
+                        <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleBannerSelect}
+                            className="hidden"
+                            id="banner-upload"
+                        />
+                        <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleLogoSelect}
+                            className="hidden"
+                            id="logo-upload"
+                        />
+
+                        <label htmlFor="banner-upload" className="absolute inset-0 cursor-pointer group-hover:bg-black/10 transition-colors">
+                            {bannerPreview || store?.banner_url ? (
+                                <img src={bannerPreview || store?.banner_url} alt="Store Banner" className="w-full h-full object-cover" />
+                            ) : (
+                                <div className="w-full h-full flex items-center justify-center text-mocha-400">
+                                    <ImageIcon className="w-12 h-12" />
+                                    <span className="ml-2 text-sm font-medium">Click to upload banner</span>
+                                </div>
+                            )}
+                        </label>
+
+                        <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/60 to-transparent flex items-end pointer-events-none">
+                            <label htmlFor="logo-upload" className="relative w-20 h-20 rounded-xl bg-white p-1 border-2 border-white shadow-lg -mb-10 ml-4 group cursor-pointer pointer-events-auto hover:brightness-95 transition-all">
+                                {logoPreview || store?.logo_url ? (
+                                    <img src={logoPreview || store?.logo_url} alt="Store Logo" className="w-full h-full object-cover rounded-lg" />
                                 ) : (
                                     <div className="w-full h-full bg-mocha-50 rounded-lg flex items-center justify-center text-mocha-300">
                                         <Store className="w-8 h-8" />
                                     </div>
                                 )}
-                            </div>
+                            </label>
                         </div>
-                        {/* Note: File upload logic would go here */}
                     </div>
+                    <p className="text-sm text-mocha-500">
+                        Click on the banner or logo placeholder to upload new images.
+                        Images are checked for inappropriate content.
+                    </p>
                 </div>
 
                 {/* Basic Info */}
@@ -254,6 +358,50 @@ export default function SellerStorePage() {
                                 type="text"
                                 value={store.province || ''}
                                 onChange={(e) => setStore({ ...store, province: e.target.value })}
+                                className="w-full px-4 py-3 bg-mocha-50 border border-mocha-200 rounded-xl focus:outline-none focus:border-mocha-400"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-mocha-700 mb-1">Barangay ID</label>
+                            <input
+                                type="text"
+                                value={store.barangay_id || ''}
+                                onChange={(e) => setStore({ ...store, barangay_id: e.target.value })}
+                                className="w-full px-4 py-3 bg-mocha-50 border border-mocha-200 rounded-xl focus:outline-none focus:border-mocha-400"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-mocha-700 mb-1">City ID</label>
+                            <input
+                                type="text"
+                                value={store.city_id || ''}
+                                onChange={(e) => setStore({ ...store, city_id: e.target.value })}
+                                className="w-full px-4 py-3 bg-mocha-50 border border-mocha-200 rounded-xl focus:outline-none focus:border-mocha-400"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 pt-4 border-t border-mocha-100">
+                        <div className="col-span-2">
+                            <h3 className="text-md font-medium text-mocha-900 mb-2">Geolocation</h3>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-mocha-700 mb-1">Latitude</label>
+                            <input
+                                type="number"
+                                step="any"
+                                value={store.latitude || ''}
+                                onChange={(e) => setStore({ ...store, latitude: parseFloat(e.target.value) })}
+                                className="w-full px-4 py-3 bg-mocha-50 border border-mocha-200 rounded-xl focus:outline-none focus:border-mocha-400"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-mocha-700 mb-1">Longitude</label>
+                            <input
+                                type="number"
+                                step="any"
+                                value={store.longitude || ''}
+                                onChange={(e) => setStore({ ...store, longitude: parseFloat(e.target.value) })}
                                 className="w-full px-4 py-3 bg-mocha-50 border border-mocha-200 rounded-xl focus:outline-none focus:border-mocha-400"
                             />
                         </div>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
     Star, Heart, ShoppingCart, Share2, Shield, Truck, RotateCcw,
@@ -14,10 +14,14 @@ import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import CartDrawer from '@/components/cart/CartDrawer';
 import SearchModal from '@/components/search/SearchModal';
+import AuthModal from '@/components/auth/AuthModal';
 import ToastContainer from '@/components/ui/Toast';
 import ProductCard from '@/components/product/ProductCard';
 import { Product, Store, Rating } from '@/types';
 import { supabase } from '@/lib/supabase';
+import { useAppSelector } from '@/store';
+import { setSidebarOpen } from '@/store/slices/uiSlice';
+import { X, Send } from 'lucide-react';
 
 export default function ProductPage() {
     const params = useParams();
@@ -26,11 +30,108 @@ export default function ProductPage() {
     const [store, setStore] = useState<Store | null>(null);
     const [ratings, setRatings] = useState<Rating[]>([]);
     const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
+    const { currentUser } = useAppSelector((state) => state.user);
     const [selectedImage, setSelectedImage] = useState(0);
     const [quantity, setQuantity] = useState(1);
     const [isWishlisted, setIsWishlisted] = useState(false);
     const [activeTab, setActiveTab] = useState<'description' | 'reviews' | 'shipping'>('description');
     const [loading, setLoading] = useState(true);
+
+    // Inquiry State
+    const [inquiryModalOpen, setInquiryModalOpen] = useState(false);
+    const [inquiryMessage, setInquiryMessage] = useState('');
+    const [sendingInquiry, setSendingInquiry] = useState(false);
+    const [authModalOpen, setAuthModalOpen] = useState(false);
+    const searchParams = useSearchParams();
+
+    const isOwner = !!(currentUser && store && currentUser.id === store.sellerId);
+
+    useEffect(() => {
+        if (product && !isOwner && searchParams.get('action') === 'inquire') {
+            handleOpenInquiry();
+        }
+    }, [product, searchParams, isOwner]);
+
+
+    const handleOpenInquiry = () => {
+        if (isOwner) {
+            dispatch(addToast({
+                type: 'error',
+                title: 'Action Not Allowed',
+                message: 'You cannot inquire about your own product.'
+            }));
+            return;
+        }
+
+        if (!currentUser) {
+            setAuthModalOpen(true);
+            return;
+        }
+        // Template
+        if (!inquiryMessage && product) {
+            setInquiryMessage(`Hi, I'm interested in the ${product.name}. Could you please provides more details about...`);
+        }
+        setInquiryModalOpen(true);
+    };
+
+    const handleSendInquiry = async () => {
+        if (!currentUser || !product || !inquiryMessage.trim()) return;
+
+        setSendingInquiry(true);
+
+        try {
+            // Check if conversation exists (optional, or just create new one)
+            // For simplicity, create a new conversation or append if we can find one efficiently. 
+            // Here we just insert a new conversation for distinct product inquiry.
+
+            // 1. Create Conversation
+            const { data: conversationData, error: convError } = await supabase
+                .from('conversations')
+                .insert({
+                    user_id: currentUser.id,
+                    store_id: product.storeId,
+                    product_id: product.id,
+                    subject: `Inquiry: ${product.name}`,
+                    status: 'open'
+                })
+                .select()
+                .single();
+
+            if (convError) throw convError;
+
+            // 2. Create Message
+            const { error: msgError } = await supabase
+                .from('messages')
+                .insert({
+                    conversation_id: conversationData.id,
+                    sender_id: currentUser.id,
+                    sender_role: 'user', // customer
+                    content: inquiryMessage,
+                    is_read: false
+                });
+
+            if (msgError) throw msgError;
+
+            dispatch(addToast({
+                type: 'success',
+                title: 'Inquiry Sent',
+                message: 'The seller has been notified of your inquiry.'
+            }));
+
+            setInquiryModalOpen(false);
+            setInquiryMessage('');
+
+        } catch (error: any) {
+            console.error('Error sending inquiry:', error);
+            dispatch(addToast({
+                type: 'error',
+                title: 'Error',
+                message: error.message || 'Failed to send inquiry'
+            }));
+        } finally {
+            setSendingInquiry(false);
+        }
+    };
 
     useEffect(() => {
         async function fetchProductData() {
@@ -301,6 +402,65 @@ export default function ProductPage() {
                                 </Link>
                             )}
 
+                            {/* Inquiry Modal */}
+                            {inquiryModalOpen && (
+                                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                                    <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl animate-scale-up">
+                                        <div className="p-4 border-b border-mocha-100 flex items-center justify-between bg-mocha-50">
+                                            <h3 className="font-semibold text-mocha-900 flex items-center gap-2">
+                                                <MessageCircle className="w-5 h-5 text-mocha-500" />
+                                                Inquire about Product
+                                            </h3>
+                                            <button
+                                                onClick={() => setInquiryModalOpen(false)}
+                                                className="p-1 hover:bg-mocha-200 rounded-full transition-colors text-mocha-500"
+                                            >
+                                                <X className="w-5 h-5" />
+                                            </button>
+                                        </div>
+                                        <div className="p-5">
+                                            <div className="flex items-start gap-4 mb-4">
+                                                <div className="w-16 h-16 rounded-lg bg-mocha-100 flex-shrink-0 overflow-hidden border border-mocha-200">
+                                                    <img src={product.images[0]} alt={product.name} className="w-full h-full object-cover" />
+                                                </div>
+                                                <div>
+                                                    <p className="font-medium text-mocha-900 line-clamp-2">{product.name}</p>
+                                                    <p className="text-sm text-mocha-500 mt-1">₱{product.price.toLocaleString()}</p>
+                                                </div>
+                                            </div>
+
+                                            <div className="mb-4">
+                                                <label className="block text-sm font-medium text-mocha-700 mb-2">Your Message</label>
+                                                <textarea
+                                                    value={inquiryMessage}
+                                                    onChange={(e) => setInquiryMessage(e.target.value)}
+                                                    className="w-full px-4 py-3 border border-mocha-200 rounded-xl focus:ring-2 focus:ring-mocha-500 focus:outline-none bg-mocha-50 resize-none h-32"
+                                                    placeholder="Type your inquiry here..."
+                                                ></textarea>
+                                            </div>
+
+                                            <button
+                                                onClick={handleSendInquiry}
+                                                disabled={sendingInquiry || !inquiryMessage.trim()}
+                                                className="w-full btn-primary flex items-center justify-center gap-2 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                {sendingInquiry ? (
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                                        Sending...
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        <Send className="w-4 h-4" />
+                                                        Send Inquiry
+                                                    </>
+                                                )}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Title & Rating */}
                             <div>
                                 <h1 className="text-2xl md:text-3xl font-bold text-mocha-900 mb-3">
@@ -352,16 +512,22 @@ export default function ProductPage() {
                                 <div className="flex items-center gap-2">
                                     <button
                                         onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                                        className="w-10 h-10 rounded-xl bg-mocha-100 hover:bg-mocha-200 flex items-center justify-center transition-colors"
+                                        disabled={product.stock === 0}
+                                        className={`w-10 h-10 rounded-xl bg-mocha-100 flex items-center justify-center transition-colors ${product.stock === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-mocha-200'
+                                            }`}
                                     >
                                         <Minus className="w-4 h-4 text-mocha-700" />
                                     </button>
                                     <span className="w-16 text-center text-lg font-semibold text-mocha-900">
-                                        {quantity}
+                                        {product.stock === 0 ? '0' : quantity}
                                     </span>
                                     <button
                                         onClick={() => setQuantity(Math.min(product.stock, quantity + 1))}
-                                        className="w-10 h-10 rounded-xl bg-mocha-100 hover:bg-mocha-200 flex items-center justify-center transition-colors"
+                                        disabled={product.stock === 0 || quantity >= product.stock}
+                                        className={`w-10 h-10 rounded-xl bg-mocha-100 flex items-center justify-center transition-colors ${(product.stock === 0 || quantity >= product.stock)
+                                                ? 'opacity-50 cursor-not-allowed'
+                                                : 'hover:bg-mocha-200'
+                                            }`}
                                     >
                                         <Plus className="w-4 h-4 text-mocha-700" />
                                     </button>
@@ -372,14 +538,18 @@ export default function ProductPage() {
                             <div className="flex gap-3">
                                 <button
                                     onClick={handleAddToCart}
-                                    className="flex-1 btn-primary flex items-center justify-center gap-2 !py-4"
+                                    disabled={product.stock === 0}
+                                    className={`flex-1 btn-primary flex items-center justify-center gap-2 !py-4 ${product.stock === 0 ? 'bg-gray-400 cursor-not-allowed hover:bg-gray-400 border-gray-400' : ''
+                                        }`}
                                 >
                                     <ShoppingCart className="w-5 h-5" />
-                                    Add to Cart
+                                    {product.stock === 0 ? 'Out of Stock' : 'Add to Cart'}
                                 </button>
                                 <button
                                     onClick={handleBuyNow}
-                                    className="flex-1 btn-accent flex items-center justify-center gap-2 !py-4"
+                                    disabled={product.stock === 0}
+                                    className={`flex-1 btn-accent flex items-center justify-center gap-2 !py-4 ${product.stock === 0 ? 'bg-gray-300 text-gray-500 cursor-not-allowed hover:bg-gray-300' : ''
+                                        }`}
                                 >
                                     Buy Now
                                 </button>
@@ -391,6 +561,17 @@ export default function ProductPage() {
                                         }`}
                                 >
                                     <Heart className={`w-6 h-6 ${isWishlisted ? 'fill-current' : ''}`} />
+                                </button>
+                                <button
+                                    onClick={handleOpenInquiry}
+                                    disabled={isOwner}
+                                    className={`w-14 h-14 rounded-xl flex items-center justify-center transition-colors ${isOwner
+                                        ? 'bg-cloud-100 text-mocha-300 cursor-not-allowed'
+                                        : 'bg-mocha-100 text-mocha-600 hover:bg-mocha-200'
+                                        }`}
+                                    title={isOwner ? "You cannot inquire on your own product" : "Inquire about this product"}
+                                >
+                                    <MessageCircle className="w-6 h-6" />
                                 </button>
                                 <button className="w-14 h-14 rounded-xl bg-mocha-100 text-mocha-600 hover:bg-mocha-200 flex items-center justify-center transition-colors">
                                     <Share2 className="w-6 h-6" />
@@ -570,6 +751,7 @@ export default function ProductPage() {
             <CartDrawer />
             <SearchModal />
             <ToastContainer />
+            <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
         </>
     );
 }

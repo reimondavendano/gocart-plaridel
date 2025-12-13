@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { Star, Heart, ShoppingCart, Eye } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Star, Heart, ShoppingCart, Eye, MessageCircle } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '@/store';
 import { Product } from '@/types';
 import { addToCart } from '@/store/slices/cartSlice';
@@ -15,6 +16,7 @@ interface ProductCardProps {
 
 export default function ProductCard({ product, variant = 'default' }: ProductCardProps) {
     const dispatch = useAppDispatch();
+    const router = useRouter();
     const isInWishlist = useAppSelector(selectIsInWishlist(product.id));
 
     const discount = product.comparePrice
@@ -109,6 +111,17 @@ export default function ProductCard({ product, variant = 'default' }: ProductCar
                         </button>
                         <button className="w-6 h-6 rounded-md bg-white/90 backdrop-blur hover:bg-white flex items-center justify-center shadow">
                             <Eye className="w-3 h-3 text-mocha-600" />
+                        </button>
+                        <button
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                router.push(`/product/${product.slug}?action=inquire`);
+                            }}
+                            className="w-6 h-6 rounded-md bg-white/90 backdrop-blur hover:bg-white flex items-center justify-center shadow"
+                            title="Inquire"
+                        >
+                            <MessageCircle className="w-3 h-3 text-mocha-600" />
                         </button>
                     </div>
 

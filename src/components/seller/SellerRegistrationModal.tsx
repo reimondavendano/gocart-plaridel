@@ -66,7 +66,6 @@ export default function SellerRegistrationModal({ isOpen, onClose, initialPlan }
         // Store Info
         storeName: '',
         description: '',
-        inquiryLink: '',
         logo: '' as string,
         // Address
         completeAddress: '',
@@ -549,7 +548,6 @@ export default function SellerRegistrationModal({ isOpen, onClose, initialPlan }
     const initialFormData = {
         storeName: '',
         description: '',
-        inquiryLink: '',
         logo: '' as string,
         completeAddress: '',
         cityId: '',
@@ -639,7 +637,6 @@ export default function SellerRegistrationModal({ isOpen, onClose, initialPlan }
                     slug: storeSlug,
                     description: formData.description,
                     logo: logoUrl,
-                    inquiry_link: formData.inquiryLink || null,
                     status: 'pending', // Always pending until admin approves
                     valid_id_front: validIdFrontUrl,
                     valid_id_back: validIdBackUrl,
@@ -768,16 +765,6 @@ export default function SellerRegistrationModal({ isOpen, onClose, initialPlan }
                     className="w-full px-4 py-3 border border-mocha-200 rounded-xl focus:ring-2 focus:ring-mocha-500 focus:outline-none bg-mocha-50 resize-none"
                     rows={3}
                     placeholder="Tell us about what you sell..."
-                />
-            </div>
-            <div>
-                <label className="block text-sm font-medium text-mocha-700 mb-1">Inquiry Link (Messenger/Viber/etc.)</label>
-                <input
-                    type="text"
-                    value={formData.inquiryLink}
-                    onChange={(e) => setFormData({ ...formData, inquiryLink: e.target.value })}
-                    className="w-full px-4 py-3 border border-mocha-200 rounded-xl focus:ring-2 focus:ring-mocha-500 focus:outline-none bg-mocha-50"
-                    placeholder="https://m.me/yourpage"
                 />
             </div>
             <div>
