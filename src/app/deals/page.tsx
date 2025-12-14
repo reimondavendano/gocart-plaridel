@@ -1,10 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { Clock, Zap, Tag, Percent, ArrowRight, Filter, Flame, ShoppingBag } from 'lucide-react';
-import { useAppDispatch, useAppSelector } from '@/store';
-import { fetchProducts } from '@/store/slices/productSlice';
+import { Clock, Zap, Tag, Percent, ArrowRight, Flame, ShoppingBag, Calendar, Package, Star } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import CartDrawer from '@/components/cart/CartDrawer';
@@ -13,60 +12,297 @@ import ToastContainer from '@/components/ui/Toast';
 import ProductCard from '@/components/product/ProductCard';
 import { Product } from '@/types';
 
+interface Deal {
+    id: string;
+    title: string;
+    description: string;
+    deal_type: 'flash_sale' | 'clearance' | 'seasonal' | 'bundle' | 'special';
+    discount_type: 'percentage' | 'fixed';
+    discount_value: number;
+    product_id: string | null;
+    start_date: string;
+    end_date: string;
+    is_active: boolean;
+    show_on_landing: boolean;
+    priority: number;
+    product?: {
+        id: string;
+        name: string;
+        slug: string;
+        description: string;
+        price: number;
+        compare_price: number | null;
+        images: string[];
+        rating: number;
+        review_count: number;
+        in_stock: boolean;
+        is_featured: boolean;
+        is_new: boolean;
+        store_id: string;
+        category_id: string;
+        stock: number;
+        tags: string[];
+        store?: {
+            id: string;
+            name: string;
+            slug: string;
+        };
+    };
+}
+
+interface SaleProduct {
+    id: string;
+    name: string;
+    slug: string;
+    description: string;
+    price: number;
+    compare_price: number;
+    images: string[];
+    rating: number;
+    review_count: number;
+    in_stock: boolean;
+    is_featured: boolean;
+    is_new: boolean;
+    store_id: string;
+    category_id: string;
+    stock: number;
+    tags: string[];
+    store?: {
+        id: string;
+        name: string;
+        slug: string;
+    };
+}
+
+const dealTypeFilters = [
+    { id: 'all', label: 'All Deals', icon: Tag },
+    { id: 'flash_sale', label: 'Flash Deals', icon: Zap },
+    { id: 'clearance', label: 'Clearance', icon: Percent },
+    { id: 'seasonal', label: 'Seasonal', icon: Calendar },
+    { id: 'bundle', label: 'Bundles', icon: Package },
+    { id: 'special', label: 'Special', icon: Star },
+];
+
 export default function DealsPage() {
-    const dispatch = useAppDispatch();
-    const { products } = useAppSelector((state) => state.product);
+    const [deals, setDeals] = useState<Deal[]>([]);
+    const [saleProducts, setSaleProducts] = useState<SaleProduct[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [filter, setFilter] = useState<string>('all');
 
     const [timeLeft, setTimeLeft] = useState({
-        hours: 23,
-        minutes: 45,
-        seconds: 59,
+        hours: 0,
+        minutes: 0,
+        seconds: 0,
     });
-    const [filter, setFilter] = useState<'all' | 'flash' | 'clearance'>('all');
 
     useEffect(() => {
-        if (products.length === 0) {
-            dispatch(fetchProducts());
-        }
-    }, [dispatch, products.length]);
+        const fetchData = async () => {
+            const now = new Date().toISOString();
 
-    // Get products with discounts
-    const dealsProducts = products.filter(p => p.comparePrice && p.comparePrice > p.price);
+            // Fetch deals
+            const { data: dealsData, error: dealsError } = await supabase
+                .from('deals')
+                .select(`
+                    *,
+                    product:products (
+                        id, name, slug, description, price, compare_price, images,
+                        rating, review_count, in_stock, is_featured, is_new, store_id,
+                        category_id, stock, tags,
+                        store:stores (id, name, slug)
+                    )
+                `)
+                .eq('is_active', true)
+                .lte('start_date', now)
+                .gte('end_date', now)
+                .order('priority', { ascending: false });
 
-    // Calculate discount percentage
-    const getDiscount = (product: Product) => {
-        if (!product.comparePrice) return 0;
-        return Math.round(((product.comparePrice - product.price) / product.comparePrice) * 100);
-    };
+            if (dealsError) {
+                console.error('Error fetching deals:', dealsError);
+            } else {
+                setDeals(dealsData || []);
+            }
 
-    // Sort by discount percentage
-    const sortedDeals = [...dealsProducts].sort((a, b) => getDiscount(b) - getDiscount(a));
+            // Fetch ALL products that are on sale (have compare_price > price)
+            // This is for "All Products" deals
+            const { data: productsData, error: productsError } = await supabase
+                .from('products')
+                .select(`
+                    id, name, slug, description, price, compare_price, images,
+                    rating, review_count, in_stock, is_featured, is_new, store_id,
+                    category_id, stock, tags,
+                    store:stores (id, name, slug)
+                `)
+                .gt('compare_price', 0)
+                .order('created_at', { ascending: false });
 
-    // Flash deals (highest discounts)
-    const flashDeals = sortedDeals.filter(p => getDiscount(p) >= 20);
+            if (productsError) {
+                console.error('Error fetching sale products:', productsError);
+            } else {
+                // Filter products where compare_price > price
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const onSale = (productsData || []).filter((p: any) => p.compare_price && p.compare_price > p.price).map((p: any) => ({
+                    ...p,
+                    store: Array.isArray(p.store) && p.store.length > 0 ? p.store[0] : (p.store || undefined)
+                })) as SaleProduct[];
+                setSaleProducts(onSale);
+            }
 
-    // Get display products based on filter
-    const displayProducts = filter === 'flash'
-        ? flashDeals
-        : filter === 'clearance'
-            ? sortedDeals.filter(p => getDiscount(p) < 20)
-            : sortedDeals;
+            setIsLoading(false);
+        };
 
-    // Countdown timer
-    useEffect(() => {
-        const timer = setInterval(() => {
-            setTimeLeft((prev) => {
-                if (prev.seconds > 0) return { ...prev, seconds: prev.seconds - 1 };
-                if (prev.minutes > 0) return { ...prev, minutes: prev.minutes - 1, seconds: 59 };
-                if (prev.hours > 0) return { hours: prev.hours - 1, minutes: 59, seconds: 59 };
-                return prev;
-            });
-        }, 1000);
-        return () => clearInterval(timer);
+        fetchData();
     }, []);
 
-    // Total savings
-    const totalSavings = dealsProducts.reduce((acc, p) => {
+    // Calculate time left based on the nearest ending deal
+    useEffect(() => {
+        if (deals.length === 0) return;
+
+        const nearestEndDate = deals.reduce((nearest, deal) => {
+            const endDate = new Date(deal.end_date);
+            return endDate < nearest ? endDate : nearest;
+        }, new Date(deals[0].end_date));
+
+        const updateTimeLeft = () => {
+            const now = new Date();
+            const diff = nearestEndDate.getTime() - now.getTime();
+
+            if (diff <= 0) {
+                setTimeLeft({ hours: 0, minutes: 0, seconds: 0 });
+                return;
+            }
+
+            const hours = Math.floor(diff / (1000 * 60 * 60));
+            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+            setTimeLeft({ hours, minutes, seconds });
+        };
+
+        updateTimeLeft();
+        const timer = setInterval(updateTimeLeft, 1000);
+        return () => clearInterval(timer);
+    }, [deals]);
+
+    // Get banner data from top priority deal
+    const bannerData = useMemo(() => {
+        if (deals.length === 0) return null;
+
+        const topDeal = deals[0];
+        const maxDiscount = Math.max(
+            ...deals
+                .filter(d => d.discount_type === 'percentage')
+                .map(d => d.discount_value),
+            0
+        );
+
+        return {
+            title: topDeal.title || `Up to ${maxDiscount}% Off Today!`,
+            description: topDeal.description || 'Grab these amazing deals before they\'re gone! Save big on your favorite products.',
+            maxDiscount,
+        };
+    }, [deals]);
+
+    // Filter deals based on type
+    const filteredDeals = filter === 'all'
+        ? deals
+        : deals.filter(d => d.deal_type === filter);
+
+    // Transform deals to products for ProductCard
+    // Includes: deals with specific products + "All Products" deals use saleProducts
+    const dealProducts: Product[] = useMemo(() => {
+        const products: Product[] = [];
+        const addedProductIds = new Set<string>();
+
+        // First, add products from deals with specific product_id
+        filteredDeals.forEach(deal => {
+            if (deal.product && !addedProductIds.has(deal.product.id)) {
+                const p = deal.product;
+                const originalPrice = p.price;
+                const discountedPrice = deal.discount_type === 'percentage'
+                    ? originalPrice * (1 - deal.discount_value / 100)
+                    : originalPrice - deal.discount_value;
+
+                products.push({
+                    id: p.id,
+                    name: p.name,
+                    slug: p.slug,
+                    description: p.description || '',
+                    price: Math.max(0, discountedPrice),
+                    comparePrice: originalPrice,
+                    images: p.images || [],
+                    category: p.category_id || '',
+                    stock: p.stock || 0,
+                    rating: p.rating || 0,
+                    reviewCount: p.review_count || 0,
+                    tags: p.tags || [],
+                    inStock: p.in_stock ?? true,
+                    isFeatured: p.is_featured ?? false,
+                    isNew: p.is_new ?? false,
+                    storeId: p.store_id,
+                    store: p.store ? {
+                        id: p.store.id,
+                        name: p.store.name,
+                        slug: p.store.slug,
+                    } : undefined,
+                });
+                addedProductIds.add(p.id);
+            }
+        });
+
+        // Then, for "All Products" deals, add sale products
+        const hasAllProductsDeal = filteredDeals.some(d => d.product_id === null);
+        if (hasAllProductsDeal) {
+            const allProductsDeal = filteredDeals.find(d => d.product_id === null);
+
+            saleProducts.forEach(p => {
+                if (!addedProductIds.has(p.id)) {
+                    // Use the deal's discount OR the product's existing discount
+                    let finalPrice = p.price;
+                    let comparePrice = p.compare_price;
+
+                    if (allProductsDeal) {
+                        // Apply deal discount
+                        finalPrice = allProductsDeal.discount_type === 'percentage'
+                            ? p.price * (1 - allProductsDeal.discount_value / 100)
+                            : p.price - allProductsDeal.discount_value;
+                        comparePrice = p.price;
+                    }
+
+                    products.push({
+                        id: p.id,
+                        name: p.name,
+                        slug: p.slug,
+                        description: p.description || '',
+                        price: Math.max(0, finalPrice),
+                        comparePrice: comparePrice,
+                        images: p.images || [],
+                        category: p.category_id || '',
+                        stock: p.stock || 0,
+                        rating: p.rating || 0,
+                        reviewCount: p.review_count || 0,
+                        tags: p.tags || [],
+                        inStock: p.in_stock ?? true,
+                        isFeatured: p.is_featured ?? false,
+                        isNew: p.is_new ?? false,
+                        storeId: p.store_id,
+                        store: p.store ? {
+                            id: p.store.id,
+                            name: p.store.name,
+                            slug: p.store.slug,
+                        } : undefined,
+                    });
+                    addedProductIds.add(p.id);
+                }
+            });
+        }
+
+        return products;
+    }, [filteredDeals, saleProducts]);
+
+    // Stats
+    const flashDealsCount = deals.filter(d => d.deal_type === 'flash_sale').length;
+    const maxDiscount = bannerData?.maxDiscount || 0;
+    const totalSavings = dealProducts.reduce((acc, p) => {
         if (p.comparePrice) {
             return acc + (p.comparePrice - p.price);
         }
@@ -77,7 +313,7 @@ export default function DealsPage() {
         <>
             <Header />
             <main className="min-h-screen pt-24 pb-16 bg-gradient-to-b from-cloud-200 to-cloud-100">
-                {/* Hero Section */}
+                {/* Hero Section - DYNAMIC based on top deal */}
                 <div className="gradient-premium py-12 md:py-16 mb-8 relative overflow-hidden">
                     {/* Background decorations */}
                     <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
@@ -90,10 +326,10 @@ export default function DealsPage() {
                                 <span className="text-white font-medium">Limited Time Only</span>
                             </div>
                             <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold text-white mb-4">
-                                Deals & Discounts
+                                {bannerData?.title || 'Deals & Discounts'}
                             </h1>
                             <p className="text-white/80 text-lg max-w-2xl mx-auto mb-8">
-                                Grab these amazing deals before they&apos;re gone! Save big on your favorite products.
+                                {bannerData?.description || 'Grab these amazing deals before they\'re gone! Save big on your favorite products.'}
                             </p>
 
                             {/* Countdown Timer */}
@@ -124,23 +360,21 @@ export default function DealsPage() {
                             <div className="w-12 h-12 rounded-xl bg-red-100 flex items-center justify-center mx-auto mb-3">
                                 <Tag className="w-6 h-6 text-red-500" />
                             </div>
-                            <p className="text-2xl font-bold text-mocha-800">{dealsProducts.length}</p>
+                            <p className="text-2xl font-bold text-mocha-800">{deals.length}</p>
                             <p className="text-sm text-mocha-500">Active Deals</p>
                         </div>
                         <div className="glass-card rounded-xl p-4 text-center">
                             <div className="w-12 h-12 rounded-xl bg-orange-100 flex items-center justify-center mx-auto mb-3">
                                 <Flame className="w-6 h-6 text-orange-500" />
                             </div>
-                            <p className="text-2xl font-bold text-mocha-800">{flashDeals.length}</p>
+                            <p className="text-2xl font-bold text-mocha-800">{flashDealsCount}</p>
                             <p className="text-sm text-mocha-500">Flash Deals</p>
                         </div>
                         <div className="glass-card rounded-xl p-4 text-center">
                             <div className="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center mx-auto mb-3">
                                 <Percent className="w-6 h-6 text-green-500" />
                             </div>
-                            <p className="text-2xl font-bold text-mocha-800">
-                                {flashDeals.length > 0 ? getDiscount(flashDeals[0]) : 0}%
-                            </p>
+                            <p className="text-2xl font-bold text-mocha-800">{maxDiscount}%</p>
                             <p className="text-sm text-mocha-500">Max Discount</p>
                         </div>
                         <div className="glass-card rounded-xl p-4 text-center">
@@ -154,18 +388,14 @@ export default function DealsPage() {
 
                     {/* Filter Tabs */}
                     <div className="flex items-center justify-between mb-6">
-                        <div className="flex gap-2">
-                            {[
-                                { id: 'all', label: 'All Deals', icon: Tag },
-                                { id: 'flash', label: 'Flash Deals', icon: Zap },
-                                { id: 'clearance', label: 'Clearance', icon: Percent },
-                            ].map((tab) => {
+                        <div className="flex gap-2 overflow-x-auto pb-2">
+                            {dealTypeFilters.map((tab) => {
                                 const Icon = tab.icon;
                                 return (
                                     <button
                                         key={tab.id}
-                                        onClick={() => setFilter(tab.id as typeof filter)}
-                                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${filter === tab.id
+                                        onClick={() => setFilter(tab.id)}
+                                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap ${filter === tab.id
                                             ? 'bg-mocha-500 text-white shadow-lg'
                                             : 'bg-white text-mocha-600 hover:bg-mocha-100'
                                             }`}
@@ -177,14 +407,18 @@ export default function DealsPage() {
                             })}
                         </div>
                         <p className="text-mocha-600 hidden md:block">
-                            Showing <span className="font-semibold text-mocha-800">{displayProducts.length}</span> deals
+                            Showing <span className="font-semibold text-mocha-800">{dealProducts.length}</span> deals
                         </p>
                     </div>
 
                     {/* Products Grid */}
-                    {displayProducts.length > 0 ? (
+                    {isLoading ? (
+                        <div className="flex items-center justify-center py-12">
+                            <div className="w-8 h-8 border-2 border-mocha-500 border-t-transparent rounded-full animate-spin" />
+                        </div>
+                    ) : dealProducts.length > 0 ? (
                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                            {displayProducts.map((product) => (
+                            {dealProducts.map((product) => (
                                 <ProductCard key={product.id} product={product} />
                             ))}
                         </div>

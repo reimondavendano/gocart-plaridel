@@ -41,7 +41,7 @@ interface Order {
     items?: OrderItem[];
 }
 
-const ORDER_STATUSES = ['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'returned', 'refunded'];
+const ORDER_STATUSES = ['pending', 'processing', 'shipped', 'delivered', 'completed', 'cancelled', 'returned', 'refunded'];
 
 export default function AdminOrdersPage() {
     const [orders, setOrders] = useState<Order[]>([]);
@@ -122,18 +122,58 @@ export default function AdminOrdersPage() {
         setUpdating(true);
 
         try {
-            const { error } = await supabase
-                .from('orders')
-                .update({ status: newStatus, updated_at: new Date().toISOString() })
-                .eq('id', selectedOrder.id);
+            if (newStatus === 'completed') {
+                const { error } = await supabase.rpc('complete_order', { p_order_id: selectedOrder.id });
+                if (error) throw error;
 
-            if (error) throw error;
+                setSelectedOrder({
+                    ...selectedOrder,
+                    status: newStatus,
+                    payment_status: 'paid'
+                });
+            } else {
+                const updates: any = {
+                    status: newStatus,
+                    updated_at: new Date().toISOString()
+                };
 
-            setSelectedOrder({ ...selectedOrder, status: newStatus });
+                const { error } = await supabase
+                    .from('orders')
+                    .update(updates)
+                    .eq('id', selectedOrder.id);
+
+                if (error) throw error;
+
+                setSelectedOrder({
+                    ...selectedOrder,
+                    status: newStatus
+                });
+            }
             fetchOrders();
         } catch (error) {
             console.error('Error updating order:', error);
             alert('Failed to update order status');
+        } finally {
+            setUpdating(false);
+        }
+    };
+
+    const markAsPaid = async () => {
+        if (!selectedOrder) return;
+        setUpdating(true);
+        try {
+            const { error } = await supabase
+                .from('orders')
+                .update({ payment_status: 'paid', updated_at: new Date().toISOString() })
+                .eq('id', selectedOrder.id);
+
+            if (error) throw error;
+
+            setSelectedOrder({ ...selectedOrder, payment_status: 'paid' });
+            fetchOrders();
+        } catch (error) {
+            console.error('Error updating payment:', error);
+            alert('Failed to update payment status');
         } finally {
             setUpdating(false);
         }
@@ -482,9 +522,20 @@ export default function AdminOrdersPage() {
                                             <span className="text-mocha-600">Method</span>
                                             <span className="font-medium text-mocha-900 uppercase">{selectedOrder.payment_method || 'N/A'}</span>
                                         </div>
-                                        <div className="flex justify-between">
+                                        <div className="flex justify-between items-center">
                                             <span className="text-mocha-600">Status</span>
-                                            {getPaymentBadge(selectedOrder.payment_status)}
+                                            <div className="flex items-center gap-2">
+                                                {getPaymentBadge(selectedOrder.payment_status)}
+                                                {selectedOrder.payment_status !== 'paid' && (
+                                                    <button
+                                                        onClick={markAsPaid}
+                                                        disabled={updating}
+                                                        className="text-xs text-blue-600 hover:text-blue-700 font-medium underline"
+                                                    >
+                                                        Mark Paid
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                         {selectedOrder.coupon_code && (
                                             <div className="flex justify-between">

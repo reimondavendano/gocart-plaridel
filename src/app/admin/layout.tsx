@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
     LayoutDashboard, Store, Users, Package, ShoppingCart,
     Settings, LogOut, Menu, X, ChevronDown, Bell, Search,
-    Shield, FileCheck, BarChart3, Tag, MessageSquare, MapPin, CreditCard, Ticket, Map
+    Shield, FileCheck, BarChart3, Tag, MessageSquare, MapPin, CreditCard, Ticket, Map, Zap
 } from 'lucide-react';
 
 const sidebarLinks = [
@@ -17,6 +17,7 @@ const sidebarLinks = [
     { href: '/admin/products', label: 'Products', icon: Package },
     { href: '/admin/orders', label: 'Orders', icon: ShoppingCart },
     { href: '/admin/categories', label: 'Categories', icon: Tag },
+    { href: '/admin/deals', label: 'Deals', icon: Zap },
     { href: '/admin/locations', label: 'Locations', icon: MapPin },
     { href: '/admin/plans', label: 'Plans', icon: CreditCard },
     { href: '/admin/coupons', label: 'Coupons', icon: Ticket },

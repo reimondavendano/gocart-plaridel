@@ -13,7 +13,7 @@ import { supabase } from '@/lib/supabase';
 import { Address } from '@/types';
 import {
     MapPin, CreditCard, Truck, Shield, ChevronRight,
-    Plus, Check, Tag, Crown, ArrowLeft
+    Plus, Check, Tag, Crown, ArrowLeft, X, Loader2
 } from 'lucide-react';
 
 export default function CheckoutPage() {
@@ -29,6 +29,19 @@ export default function CheckoutPage() {
     const [couponCode, setCouponCode] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
     const [isLoadingAddresses, setIsLoadingAddresses] = useState(true);
+
+    // Address modal state
+    const [showAddressModal, setShowAddressModal] = useState(false);
+    const [isSavingAddress, setIsSavingAddress] = useState(false);
+    const [cities, setCities] = useState<{ id: string; name: string }[]>([]);
+    const [barangays, setBarangays] = useState<{ id: string; name: string }[]>([]);
+    const [newAddress, setNewAddress] = useState({
+        label: 'Home',
+        completeAddress: '',
+        cityId: '',
+        barangayId: '',
+        isDefault: false
+    });
 
     const isPlus = currentUser?.plan?.name === 'Growth' || currentUser?.plan?.name === 'Pro' || currentUser?.plan?.name === 'Enterprise';
     const finalShipping = isPlus ? 0 : shipping;
@@ -55,6 +68,12 @@ export default function CheckoutPage() {
                         id: item.id,
                         userId: item.user_id,
                         label: item.label,
+                        completeAddress: item.complete_address,
+                        cityId: item.city_id,
+                        barangayId: item.barangay_id,
+                        latitude: item.latitude,
+                        longitude: item.longitude,
+                        // Legacy fields for backward compatibility
                         fullName: item.full_name,
                         phone: item.phone,
                         street: item.street,
@@ -87,6 +106,87 @@ export default function CheckoutPage() {
         }
     }, [currentUser]);
 
+    // Fetch cities
+    useEffect(() => {
+        async function fetchCities() {
+            const { data } = await supabase
+                .from('cities')
+                .select('id, name')
+                .eq('is_active', true)
+                .order('name');
+            if (data) setCities(data);
+        }
+        fetchCities();
+    }, []);
+
+    // Fetch barangays when city changes
+    useEffect(() => {
+        async function fetchBarangays() {
+            if (!newAddress.cityId) {
+                setBarangays([]);
+                return;
+            }
+            const { data } = await supabase
+                .from('barangays')
+                .select('id, name')
+                .eq('city_id', newAddress.cityId)
+                .eq('is_active', true)
+                .order('name');
+            if (data) setBarangays(data);
+        }
+        fetchBarangays();
+    }, [newAddress.cityId]);
+
+    const handleSaveAddress = async () => {
+        if (!currentUser || !newAddress.completeAddress.trim()) {
+            dispatch(addToast({ type: 'error', title: 'Please fill in the address' }));
+            return;
+        }
+
+        setIsSavingAddress(true);
+        try {
+            const { data, error } = await supabase
+                .from('addresses')
+                .insert({
+                    user_id: currentUser.id,
+                    label: newAddress.label,
+                    complete_address: newAddress.completeAddress,
+                    city_id: newAddress.cityId || null,
+                    barangay_id: newAddress.barangayId || null,
+                    is_default: newAddress.isDefault || addresses.length === 0
+                })
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            // Add to local state
+            const newAddr: Address = {
+                id: data.id,
+                userId: data.user_id,
+                label: data.label,
+                completeAddress: data.complete_address,
+                cityId: data.city_id,
+                barangayId: data.barangay_id,
+                isDefault: data.is_default
+            };
+
+            setAddresses(prev => [...prev, newAddr]);
+            if (data.is_default || addresses.length === 0) {
+                setSelectedAddress(data.id);
+            }
+
+            // Reset form and close modal
+            setNewAddress({ label: 'Home', completeAddress: '', cityId: '', barangayId: '', isDefault: false });
+            setShowAddressModal(false);
+            dispatch(addToast({ type: 'success', title: 'Address added successfully!' }));
+        } catch (err) {
+            console.error('Error saving address:', err);
+            dispatch(addToast({ type: 'error', title: 'Failed to save address' }));
+        } finally {
+            setIsSavingAddress(false);
+        }
+    };
 
     const handlePlaceOrder = async () => {
         if (!selectedAddress) {
@@ -94,24 +194,160 @@ export default function CheckoutPage() {
             return;
         }
 
+        if (!currentUser) {
+            dispatch(addToast({ type: 'error', title: 'Please log in to place an order' }));
+            return;
+        }
+
         setIsProcessing(true);
 
         try {
-            // Simulate API call for now, later implement real order creation
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            // Group items by store
+            const itemsByStore: Record<string, typeof items> = {};
+            for (const item of items) {
+                const storeId = item.product.storeId;
+                if (!itemsByStore[storeId]) {
+                    itemsByStore[storeId] = [];
+                }
+                itemsByStore[storeId].push(item);
+            }
 
-            // TODO: Insert into 'orders' table in Supabase
+            const createdOrderIds: string[] = [];
+
+            // Create an order for each store
+            for (const [storeId, storeItems] of Object.entries(itemsByStore)) {
+                const orderSubtotal = storeItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                const orderTotal = orderSubtotal - discount + finalShipping;
+
+                // Create order with pending status
+                const { data: order, error: orderError } = await supabase
+                    .from('orders')
+                    .insert({
+                        user_id: currentUser.id,
+                        store_id: storeId,
+                        subtotal: orderSubtotal,
+                        shipping_fee: finalShipping,
+                        discount: discount,
+                        total: orderTotal,
+                        status: 'pending',
+                        payment_method: paymentMethod,
+                        payment_status: 'pending',
+                        shipping_address_id: selectedAddress,
+                        coupon_code: couponCode || null,
+                        reservation_expires_at: new Date(Date.now() + (paymentMethod === 'xendit' ? 30 : 24 * 60) * 60 * 1000).toISOString()
+                    })
+                    .select()
+                    .single();
+
+                if (orderError) {
+                    console.error('Order insert error:', orderError);
+                    throw new Error(`Failed to create order: ${orderError.message}`);
+                }
+                if (!order) {
+                    throw new Error('Failed to create order: No data returned');
+                }
+
+                createdOrderIds.push(order.id);
+
+                // Create order items
+                const orderItems = storeItems.map(item => ({
+                    order_id: order.id,
+                    product_id: item.product.id,
+                    product_name: item.product.name,
+                    product_image: item.product.images[0] || '',
+                    quantity: item.quantity,
+                    price: item.price,
+                    total: item.price * item.quantity
+                }));
+
+                await supabase.from('order_items').insert(orderItems);
+
+                // Create stock reservations
+                for (const item of storeItems) {
+                    await supabase.from('stock_reservations').insert({
+                        order_id: order.id,
+                        product_id: item.product.id,
+                        quantity: item.quantity,
+                        expires_at: new Date(Date.now() + (paymentMethod === 'xendit' ? 30 : 24 * 60) * 60 * 1000).toISOString(),
+                        status: 'active'
+                    });
+
+                    // Update reserved stock on product
+                    const { data: product } = await supabase
+                        .from('products')
+                        .select('reserved_stock')
+                        .eq('id', item.product.id)
+                        .single();
+
+                    await supabase
+                        .from('products')
+                        .update({ reserved_stock: (product?.reserved_stock || 0) + item.quantity })
+                        .eq('id', item.product.id);
+                }
+
+                // Log order creation
+                await supabase.from('order_status_history').insert({
+                    order_id: order.id,
+                    old_status: null,
+                    new_status: 'pending',
+                    changed_by: currentUser.id,
+                    changed_by_role: 'customer',
+                    notes: 'Order placed by customer'
+                });
+            }
 
             dispatch(clearCart());
-            dispatch(addToast({ type: 'success', title: 'Order Placed!', message: 'Thank you for your purchase.' }));
-        } catch (error) {
+
+            // Handle Xendit Payment Redirection
+            if (paymentMethod === 'xendit' && createdOrderIds.length > 0) {
+                // If it's a single order, process it immediately
+                if (createdOrderIds.length === 1) {
+                    dispatch(addToast({ type: 'info', title: 'Processing Payment', message: 'Redirecting to payment gateway...' }));
+                    try {
+                        const response = await fetch('/api/xendit/create-invoice', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ orderId: createdOrderIds[0] })
+                        });
+
+                        const data = await response.json();
+                        if (!response.ok) throw new Error(data.error || 'Failed to initialize payment');
+
+                        if (data.invoiceUrl) {
+                            window.location.href = data.invoiceUrl;
+                            return;
+                        }
+                    } catch (err: any) {
+                        console.error('Payment initialization failed:', err);
+                        dispatch(addToast({
+                            type: 'warning',
+                            title: 'Payment Redirection Failed',
+                            message: 'Please try paying from the Orders page.'
+                        }));
+                    }
+                } else {
+                    dispatch(addToast({
+                        type: 'info',
+                        title: 'Multiple Orders Created',
+                        message: 'Please proceed to Orders page to pay for each order separately.'
+                    }));
+                }
+            } else {
+                dispatch(addToast({ type: 'success', title: 'Order Placed!', message: 'Your order is awaiting seller approval.' }));
+            }
+
+            // Redirect to orders page
+            window.location.href = '/orders';
+        } catch (error: any) {
             console.error('Order placement failed:', error);
-            dispatch(addToast({ type: 'error', title: 'Order Failed', message: 'Something went wrong.' }));
+            dispatch(addToast({
+                type: 'error',
+                title: 'Order Failed',
+                message: error?.message || 'Something went wrong. Please try again.'
+            }));
         } finally {
             setIsProcessing(false);
         }
-
-        // In real app, would redirect to order confirmation
     };
 
     if (items.length === 0) {
@@ -195,9 +431,11 @@ export default function CheckoutPage() {
                                                             <span className="text-xs px-2 py-0.5 rounded-full bg-mocha-200 text-mocha-700">Default</span>
                                                         )}
                                                     </div>
-                                                    <p className="text-mocha-700 mt-1">{address.fullName}</p>
-                                                    <p className="text-sm text-mocha-500">{address.phone}</p>
-                                                    <p className="text-sm text-mocha-500">{address.street}, {address.city}, {address.province} {address.postalCode}</p>
+                                                    {address.fullName && <p className="text-mocha-700 mt-1">{address.fullName}</p>}
+                                                    {address.phone && <p className="text-sm text-mocha-500">{address.phone}</p>}
+                                                    <p className="text-sm text-mocha-500">
+                                                        {address.completeAddress || `${address.street || ''}, ${address.city || ''}, ${address.province || ''} ${address.postalCode || ''}`}
+                                                    </p>
                                                 </div>
                                             </label>
                                         ))
@@ -207,7 +445,10 @@ export default function CheckoutPage() {
                                         </div>
                                     )}
 
-                                    <button className="flex items-center gap-2 w-full p-4 rounded-xl border-2 border-dashed border-mocha-300 text-mocha-600 hover:border-mocha-400 hover:bg-mocha-50 transition-colors">
+                                    <button
+                                        onClick={() => setShowAddressModal(true)}
+                                        className="flex items-center gap-2 w-full p-4 rounded-xl border-2 border-dashed border-mocha-300 text-mocha-600 hover:border-mocha-400 hover:bg-mocha-50 transition-colors"
+                                    >
                                         <Plus className="w-5 h-5" />
                                         Add New Address
                                     </button>
@@ -360,7 +601,13 @@ export default function CheckoutPage() {
                                     disabled={isProcessing}
                                     className="w-full btn-primary mt-6 !py-4 disabled:opacity-50"
                                 >
-                                    {isProcessing ? 'Processing...' : `Place Order • ₱${total.toLocaleString()}`}
+                                    {isProcessing
+                                        ? 'Processing...'
+                                        : (paymentMethod === 'xendit'
+                                            ? `Pay now • ₱${total.toLocaleString()}`
+                                            : `Place Order • ₱${total.toLocaleString()}`
+                                        )
+                                    }
                                 </button>
 
                                 <p className="text-xs text-center text-mocha-400 mt-4">
@@ -373,6 +620,116 @@ export default function CheckoutPage() {
             </main>
             <Footer />
             <ToastContainer />
+
+            {/* Add Address Modal */}
+            {showAddressModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+                        <div className="flex items-center justify-between p-6 border-b border-gray-100">
+                            <h2 className="text-xl font-bold text-gray-900">Add New Address</h2>
+                            <button
+                                onClick={() => setShowAddressModal(false)}
+                                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="p-6 space-y-4">
+                            {/* Label */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Address Label</label>
+                                <select
+                                    value={newAddress.label}
+                                    onChange={(e) => setNewAddress({ ...newAddress, label: e.target.value })}
+                                    className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-mocha-500"
+                                >
+                                    <option value="Home">Home</option>
+                                    <option value="Work">Work</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+
+                            {/* Complete Address */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Complete Address *</label>
+                                <textarea
+                                    value={newAddress.completeAddress}
+                                    onChange={(e) => setNewAddress({ ...newAddress, completeAddress: e.target.value })}
+                                    placeholder="House/Unit No., Street, Building, Landmark"
+                                    rows={3}
+                                    className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-mocha-500 resize-none"
+                                />
+                            </div>
+
+                            {/* City */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">City/Municipality</label>
+                                <select
+                                    value={newAddress.cityId}
+                                    onChange={(e) => setNewAddress({ ...newAddress, cityId: e.target.value, barangayId: '' })}
+                                    className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-mocha-500"
+                                >
+                                    <option value="">Select City</option>
+                                    {cities.map(city => (
+                                        <option key={city.id} value={city.id}>{city.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Barangay */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Barangay</label>
+                                <select
+                                    value={newAddress.barangayId}
+                                    onChange={(e) => setNewAddress({ ...newAddress, barangayId: e.target.value })}
+                                    disabled={!newAddress.cityId}
+                                    className="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-mocha-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                >
+                                    <option value="">{newAddress.cityId ? 'Select Barangay' : 'Select a city first'}</option>
+                                    {barangays.map(brgy => (
+                                        <option key={brgy.id} value={brgy.id}>{brgy.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Default Address Checkbox */}
+                            <label className="flex items-center gap-3 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={newAddress.isDefault}
+                                    onChange={(e) => setNewAddress({ ...newAddress, isDefault: e.target.checked })}
+                                    className="w-5 h-5 rounded border-gray-300 text-mocha-600 focus:ring-mocha-500"
+                                />
+                                <span className="text-sm text-gray-700">Set as default address</span>
+                            </label>
+                        </div>
+
+                        <div className="flex gap-3 p-6 border-t border-gray-100">
+                            <button
+                                onClick={() => setShowAddressModal(false)}
+                                className="flex-1 px-4 py-3 text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors font-medium"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleSaveAddress}
+                                disabled={isSavingAddress || !newAddress.completeAddress.trim()}
+                                className="flex-1 btn-primary !py-3 disabled:opacity-50 flex items-center justify-center gap-2"
+                            >
+                                {isSavingAddress ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                        Saving...
+                                    </>
+                                ) : (
+                                    'Save Address'
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </>
     );
 }

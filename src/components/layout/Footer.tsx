@@ -165,10 +165,10 @@ export default function Footer() {
                     <p className="text-sm text-mocha-500">
                         © {new Date().getFullYear()} GoCart Plaridel. All rights reserved.
                     </p>
-                    <div className="flex items-center gap-4">
-                        <img src="/visa.svg" alt="Visa" className="h-6 opacity-60" />
-                        <img src="/mastercard.svg" alt="Mastercard" className="h-6 opacity-60" />
-                        <img src="/gcash.svg" alt="GCash" className="h-6 opacity-60" />
+                    <div className="flex items-center gap-4 text-sm font-medium text-mocha-400">
+                        <span>Visa</span>
+                        <span>Mastercard</span>
+                        <span>GCash</span>
                     </div>
                 </div>
             </div>

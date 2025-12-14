@@ -1,26 +1,95 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Clock, Zap } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
+
+interface Deal {
+    id: string;
+    title: string;
+    description: string;
+    deal_type: string; // Changed from literal to string to avoid complex casting if types mismatch at runtime
+    discount_type: 'percentage' | 'fixed';
+    discount_value: number;
+    end_date: string;
+    start_date: string;
+    priority: number;
+}
 
 export default function FlashSaleBanner() {
+    const [deal, setDeal] = useState<Deal | null>(null);
     const [timeLeft, setTimeLeft] = useState({
-        hours: 23,
-        minutes: 45,
-        seconds: 59,
+        hours: 0,
+        minutes: 0,
+        seconds: 0,
     });
 
     useEffect(() => {
-        const timer = setInterval(() => {
-            setTimeLeft((prev) => {
-                if (prev.seconds > 0) return { ...prev, seconds: prev.seconds - 1 };
-                if (prev.minutes > 0) return { ...prev, minutes: prev.minutes - 1, seconds: 59 };
-                if (prev.hours > 0) return { hours: prev.hours - 1, minutes: 59, seconds: 59 };
-                return prev;
-            });
-        }, 1000);
-        return () => clearInterval(timer);
+        const fetchTopDeal = async () => {
+            const now = new Date().toISOString();
+            const { data, error } = await supabase
+                .from('deals')
+                .select('*')
+                .eq('is_active', true)
+                .eq('show_on_landing', true) // Assuming we only show landing page deals here? Or maybe 'flash_sale' specifically?
+                .lte('start_date', now)
+                .gte('end_date', now)
+                .order('priority', { ascending: false })
+                .limit(1)
+                .single();
+
+            if (!error && data) {
+                setDeal(data);
+            }
+        };
+
+        fetchTopDeal();
     }, []);
+
+    useEffect(() => {
+        if (!deal) return;
+
+        const updateTimeLeft = () => {
+            const now = new Date();
+            const endDate = new Date(deal.end_date);
+            const diff = endDate.getTime() - now.getTime();
+
+            if (diff <= 0) {
+                setTimeLeft({ hours: 0, minutes: 0, seconds: 0 });
+                return;
+            }
+
+            const hours = Math.floor(diff / (1000 * 60 * 60));
+            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+            setTimeLeft({ hours, minutes, seconds });
+        };
+
+        updateTimeLeft();
+        const timer = setInterval(updateTimeLeft, 1000);
+        return () => clearInterval(timer);
+    }, [deal]);
+
+    const bannerData = useMemo(() => {
+        if (!deal) return null;
+
+        const dealTypeLabels: Record<string, string> = {
+            flash_sale: 'Flash Sale',
+            clearance: 'Clearance Sale',
+            seasonal: 'Seasonal Sale',
+            bundle: 'Bundle Deal',
+            special: 'Special Offer',
+        };
+
+        return {
+            label: dealTypeLabels[deal.deal_type] || 'Flash Sale',
+            title: deal.title,
+            description: deal.description || "Grab exclusive deals before they're gone",
+        };
+    }, [deal]);
+
+    if (!deal || !bannerData) return null;
 
     return (
         <div className="gradient-premium px-4 md:px-8 lg:px-12 py-4 md:py-5 relative overflow-hidden">
@@ -32,14 +101,14 @@ export default function FlashSaleBanner() {
                 <div className="flex items-center gap-4">
                     <div className="flex items-center gap-2">
                         <Zap className="w-5 h-5 text-yellow-400" />
-                        <span className="text-white/90 font-medium text-sm">Flash Sale</span>
+                        <span className="text-white/90 font-medium text-sm">{bannerData.label}</span>
                     </div>
                     <div className="hidden sm:block w-px h-6 bg-white/20" />
                     <h2 className="text-lg md:text-xl font-bold text-white">
-                        Up to 50% Off Today!
+                        {bannerData.title}
                     </h2>
                     <p className="hidden md:block text-white/70 text-sm">
-                        Grab exclusive deals before they&apos;re gone
+                        {bannerData.description}
                     </p>
                 </div>
 

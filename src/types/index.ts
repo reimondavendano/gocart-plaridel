@@ -87,6 +87,11 @@ export interface Product {
     category: string;
     stock: number;
     inStock?: boolean;
+    store?: {
+        id?: string;
+        name: string;
+        slug?: string;
+    } | null;
     rating: number;
     reviewCount: number;
     tags: string[];
@@ -110,13 +115,20 @@ export interface Address {
     id: string;
     userId: string;
     label: string;
-    fullName: string;
-    phone: string;
-    street: string;
-    city: string;
-    province: string;
-    postalCode: string;
-    country: string;
+    // New schema fields
+    completeAddress?: string;
+    cityId?: string;
+    barangayId?: string;
+    latitude?: number;
+    longitude?: number;
+    // Legacy fields (for backward compatibility)
+    fullName?: string;
+    phone?: string;
+    street?: string;
+    city?: string;
+    province?: string;
+    postalCode?: string;
+    country?: string;
     isDefault: boolean;
 }
 
