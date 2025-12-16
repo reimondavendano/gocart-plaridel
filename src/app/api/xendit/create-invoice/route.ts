@@ -84,8 +84,8 @@ export async function POST(request: Request) {
                 email: order.user?.email,
                 ...(customerPhone ? { mobile_number: customerPhone } : {})
             },
-            success_redirect_url: `${process.env.NEXT_PUBLIC_APP_URL}/orders/${orderId}?payment=success`,
-            failure_redirect_url: `${process.env.NEXT_PUBLIC_APP_URL}/orders/${orderId}?payment=failed`,
+            success_redirect_url: `${process.env.NEXT_PUBLIC_SITE_URL}/orders/${orderId}?payment=success`,
+            failure_redirect_url: `${process.env.NEXT_PUBLIC_SITE_URL}/orders/${orderId}?payment=failed`,
         };
 
         const xenditResponse = await fetch(XENDIT_API_URL, {
