@@ -442,7 +442,7 @@ export default function AdminStoresPage() {
                                         <div className="absolute bottom-0 left-4 transform translate-y-1/2">
                                             <div className="w-16 h-16 rounded-xl bg-mocha-900 border-4 border-mocha-900 overflow-hidden">
                                                 {selectedStore.logo ? (
-                                                    <img src={selectedStore.logo} alt={selectedStore.name} className="w-full h-full object-cover" />
+                                                    <img src={selectedStore.logo} alt={selectedStore.name} className="w-full h-full object-contain" />
                                                 ) : (
                                                     <div className="w-full h-full flex items-center justify-center bg-mocha-800">
                                                         <Store className="w-6 h-6 text-mocha-500" />

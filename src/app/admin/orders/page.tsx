@@ -144,6 +144,15 @@ export default function AdminOrdersPage() {
 
                 if (error) throw error;
 
+                // Log status change to order_status_history
+                await supabase.from('order_status_history').insert({
+                    order_id: selectedOrder.id,
+                    old_status: selectedOrder.status,
+                    new_status: newStatus,
+                    changed_by_role: 'admin',
+                    notes: `Status updated to ${newStatus} by admin`
+                });
+
                 setSelectedOrder({
                     ...selectedOrder,
                     status: newStatus

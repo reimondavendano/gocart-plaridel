@@ -39,6 +39,7 @@ export default function MessagesPage() {
     const router = useRouter();
     const { currentUser, isAuthenticated } = useAppSelector((state) => state.user);
     const [authModalOpen, setAuthModalOpen] = useState(false);
+    const [authChecking, setAuthChecking] = useState(true);
 
     const [conversations, setConversations] = useState<Conversation[]>([]);
     const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
@@ -49,12 +50,26 @@ export default function MessagesPage() {
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
-    // Initial Auth Check
+    // Check auth session on mount
     useEffect(() => {
-        if (!loading && !isAuthenticated) {
+        const checkAuth = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            // Wait a bit for Redux state to be updated by Header component
+            if (session) {
+                // Give time for Header to dispatch setUser
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            setAuthChecking(false);
+        };
+        checkAuth();
+    }, []);
+
+    // Initial Auth Check - only show modal after auth check is complete
+    useEffect(() => {
+        if (!authChecking && !loading && !isAuthenticated) {
             setAuthModalOpen(true);
         }
-    }, [isAuthenticated, loading]);
+    }, [isAuthenticated, loading, authChecking]);
 
     // Fetch Conversations
     useEffect(() => {
@@ -108,6 +123,22 @@ export default function MessagesPage() {
 
         if (currentUser) {
             fetchConversations();
+
+            // Subscribe to new messages to refresh conversation list
+            const channel = supabase
+                .channel(`user_conversations:${currentUser.id}`)
+                .on('postgres_changes', {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'messages'
+                }, () => {
+                    fetchConversations();
+                })
+                .subscribe();
+
+            return () => {
+                supabase.removeChannel(channel);
+            };
         } else {
             setLoading(false); // Stop loading if no user pending auth
         }
@@ -189,7 +220,7 @@ export default function MessagesPage() {
         }
     };
 
-    if (loading) {
+    if (loading || authChecking) {
         return (
             <>
                 <Header />
@@ -314,8 +345,8 @@ export default function MessagesPage() {
                                             return (
                                                 <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
                                                     <div className={`max-w-[75%] px-4 py-3 rounded-2xl shadow-sm text-sm ${isMe
-                                                            ? 'bg-mocha-600 text-white rounded-br-none'
-                                                            : 'bg-white border border-mocha-100 text-mocha-800 rounded-bl-none'
+                                                        ? 'bg-mocha-600 text-white rounded-br-none'
+                                                        : 'bg-white border border-mocha-100 text-mocha-800 rounded-bl-none'
                                                         }`}>
                                                         <p>{msg.content}</p>
                                                         <p className={`text-[10px] mt-1 text-right ${isMe ? 'text-mocha-200' : 'text-mocha-400'}`}>

@@ -49,11 +49,44 @@ export default function AdminMessagesPage() {
             }
         }
         fetchConversations();
+
+        // Subscribe to new messages to refresh conversation list
+        const channel = supabase
+            .channel('admin_conversations')
+            .on('postgres_changes', {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'messages'
+            }, () => {
+                fetchConversations();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, []);
 
     useEffect(() => {
         if (selectedConversation) {
             fetchThreadMessages(selectedConversation);
+
+            // Subscribe to real-time messages
+            const channel = supabase
+                .channel(`admin_msgs:${selectedConversation}`)
+                .on('postgres_changes', {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'messages',
+                    filter: `conversation_id=eq.${selectedConversation}`
+                }, (payload) => {
+                    setThreadMessages(prev => [...prev, payload.new as ThreadMessage]);
+                })
+                .subscribe();
+
+            return () => {
+                supabase.removeChannel(channel);
+            };
         }
     }, [selectedConversation]);
 
@@ -264,8 +297,8 @@ export default function AdminMessagesPage() {
                                             <div key={msg.id} className={`flex ${isAdmin ? 'justify-end' : 'justify-start'}`}>
                                                 <div className={`max-w-[75%] flex flex-col ${isAdmin ? 'items-end' : 'items-start'}`}>
                                                     <div className={`p-4 rounded-2xl shadow-sm text-sm whitespace-pre-wrap ${isAdmin
-                                                            ? 'bg-mocha-600 text-white rounded-tr-sm'
-                                                            : 'bg-white border border-mocha-200 text-mocha-800 rounded-tl-sm'
+                                                        ? 'bg-mocha-600 text-white rounded-tr-sm'
+                                                        : 'bg-white border border-mocha-200 text-mocha-800 rounded-tl-sm'
                                                         }`}>
                                                         {msg.content}
                                                     </div>

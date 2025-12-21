@@ -525,8 +525,8 @@ export default function ProductPage() {
                                         onClick={() => setQuantity(Math.min(product.stock, quantity + 1))}
                                         disabled={product.stock === 0 || quantity >= product.stock}
                                         className={`w-10 h-10 rounded-xl bg-mocha-100 flex items-center justify-center transition-colors ${(product.stock === 0 || quantity >= product.stock)
-                                                ? 'opacity-50 cursor-not-allowed'
-                                                : 'hover:bg-mocha-200'
+                                            ? 'opacity-50 cursor-not-allowed'
+                                            : 'hover:bg-mocha-200'
                                             }`}
                                     >
                                         <Plus className="w-4 h-4 text-mocha-700" />
@@ -643,25 +643,6 @@ export default function ProductPage() {
                                     <p className="text-mocha-700 leading-relaxed">
                                         {product.description}
                                     </p>
-                                    <h3 className="text-lg font-semibold text-mocha-900 mt-6 mb-3">Key Features</h3>
-                                    <ul className="space-y-2">
-                                        <li className="flex items-start gap-2 text-mocha-700">
-                                            <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                                            Premium quality materials for durability
-                                        </li>
-                                        <li className="flex items-start gap-2 text-mocha-700">
-                                            <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                                            Designed for maximum comfort and performance
-                                        </li>
-                                        <li className="flex items-start gap-2 text-mocha-700">
-                                            <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                                            Modern design that fits any style
-                                        </li>
-                                        <li className="flex items-start gap-2 text-mocha-700">
-                                            <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                                            1-year manufacturer warranty included
-                                        </li>
-                                    </ul>
                                 </div>
                             )}
 

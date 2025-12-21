@@ -73,10 +73,27 @@ export default function SellerMessagesPage() {
         }
     }, [currentUser]);
 
+
     // Fetch Conversations
     useEffect(() => {
         if (currentUser?.id) {
             fetchConversations();
+
+            // Subscribe to new messages to refresh conversation list
+            const channel = supabase
+                .channel(`seller_conversations:${currentUser.id}`)
+                .on('postgres_changes', {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'messages'
+                }, () => {
+                    fetchConversations();
+                })
+                .subscribe();
+
+            return () => {
+                supabase.removeChannel(channel);
+            };
         }
     }, [currentUser, activeTab, storeId]);
 
@@ -426,8 +443,8 @@ export default function SellerMessagesPage() {
                                     return (
                                         <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
                                             <div className={`max-w-[80%] rounded-2xl px-4 py-3 ${isMe
-                                                    ? 'bg-mocha-600 text-white rounded-br-none'
-                                                    : 'bg-white text-mocha-800 shadow-sm border border-mocha-100 rounded-bl-none'
+                                                ? 'bg-mocha-600 text-white rounded-br-none'
+                                                : 'bg-white text-mocha-800 shadow-sm border border-mocha-100 rounded-bl-none'
                                                 }`}>
                                                 <p className="text-sm leading-relaxed">{msg.content}</p>
                                                 <p className={`text-[10px] mt-1 text-right ${isMe ? 'text-mocha-200' : 'text-mocha-400'}`}>

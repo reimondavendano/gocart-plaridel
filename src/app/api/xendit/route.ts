@@ -49,11 +49,19 @@ export async function POST(request: Request) {
         // Handle different payment statuses
         switch (status) {
             case 'PAID':
-                // Update order status
+                // Get current order status first
+                const { data: currentOrder } = await supabase
+                    .from('orders')
+                    .select('status')
+                    .eq('id', external_id)
+                    .single();
+
+                const oldStatus = currentOrder?.status || 'pending';
+
+                // Update order - payment confirmed, awaiting seller processing
                 await supabase
                     .from('orders')
                     .update({
-                        status: 'payment_confirmed',
                         payment_status: 'paid',
                         updated_at: new Date().toISOString()
                     })
@@ -62,10 +70,10 @@ export async function POST(request: Request) {
                 // Log status change
                 await supabase.from('order_status_history').insert({
                     order_id: external_id,
-                    old_status: 'payment_pending',
-                    new_status: 'payment_confirmed',
+                    old_status: oldStatus,
+                    new_status: oldStatus, // Status doesn't change, only payment status
                     changed_by_role: 'system',
-                    notes: `Payment confirmed via Xendit. Amount: ${paid_amount}`
+                    notes: `Payment confirmed via Xendit. Amount: ₱${paid_amount}`
                 });
 
                 // Convert reserved stock to sold stock
@@ -111,7 +119,7 @@ export async function POST(request: Request) {
                 // Log status change
                 await supabase.from('order_status_history').insert({
                     order_id: external_id,
-                    old_status: 'payment_pending',
+                    old_status: 'pending',
                     new_status: 'cancelled',
                     changed_by_role: 'system',
                     notes: 'Payment expired - order cancelled'

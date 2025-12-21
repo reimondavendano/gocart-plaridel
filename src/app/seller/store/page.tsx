@@ -335,29 +335,32 @@ export default function SellerStorePage() {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="col-span-2">
-                            <label className="block text-sm font-medium text-mocha-700 mb-1">Street Address</label>
+                            <label className="block text-sm font-medium text-mocha-700 mb-1">Street Address <span className="text-red-500">*</span></label>
                             <input
                                 type="text"
                                 value={store.address || ''}
                                 onChange={(e) => setStore({ ...store, address: e.target.value })}
+                                required
                                 className="w-full px-4 py-3 bg-mocha-50 border border-mocha-200 rounded-xl focus:outline-none focus:border-mocha-400"
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-mocha-700 mb-1">City</label>
+                            <label className="block text-sm font-medium text-mocha-700 mb-1">City <span className="text-red-500">*</span></label>
                             <input
                                 type="text"
                                 value={store.city || ''}
                                 onChange={(e) => setStore({ ...store, city: e.target.value })}
+                                required
                                 className="w-full px-4 py-3 bg-mocha-50 border border-mocha-200 rounded-xl focus:outline-none focus:border-mocha-400"
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-mocha-700 mb-1">Province</label>
+                            <label className="block text-sm font-medium text-mocha-700 mb-1">Province <span className="text-red-500">*</span></label>
                             <input
                                 type="text"
                                 value={store.province || ''}
                                 onChange={(e) => setStore({ ...store, province: e.target.value })}
+                                required
                                 className="w-full px-4 py-3 bg-mocha-50 border border-mocha-200 rounded-xl focus:outline-none focus:border-mocha-400"
                             />
                         </div>

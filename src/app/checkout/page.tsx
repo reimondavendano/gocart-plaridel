@@ -13,8 +13,9 @@ import { supabase } from '@/lib/supabase';
 import { Address } from '@/types';
 import {
     MapPin, CreditCard, Truck, Shield, ChevronRight,
-    Plus, Check, Tag, Crown, ArrowLeft, X, Loader2
+    Plus, Check, Tag, Crown, ArrowLeft, X, Loader2, LogIn
 } from 'lucide-react';
+import AuthModal from '@/components/auth/AuthModal';
 
 export default function CheckoutPage() {
     const dispatch = useDispatch();
@@ -42,6 +43,9 @@ export default function CheckoutPage() {
         barangayId: '',
         isDefault: false
     });
+
+    // Auth modal state
+    const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
     const isPlus = currentUser?.plan?.name === 'Growth' || currentUser?.plan?.name === 'Pro' || currentUser?.plan?.name === 'Enterprise';
     const finalShipping = isPlus ? 0 : shipping;
@@ -189,13 +193,13 @@ export default function CheckoutPage() {
     };
 
     const handlePlaceOrder = async () => {
-        if (!selectedAddress) {
-            dispatch(addToast({ type: 'error', title: 'Please select a delivery address' }));
+        if (!currentUser) {
+            setIsAuthModalOpen(true);
             return;
         }
 
-        if (!currentUser) {
-            dispatch(addToast({ type: 'error', title: 'Please log in to place an order' }));
+        if (!selectedAddress) {
+            dispatch(addToast({ type: 'error', title: 'Please select a delivery address' }));
             return;
         }
 
@@ -446,11 +450,20 @@ export default function CheckoutPage() {
                                     )}
 
                                     <button
-                                        onClick={() => setShowAddressModal(true)}
+                                        onClick={() => {
+                                            if (!currentUser) {
+                                                setIsAuthModalOpen(true);
+                                                return;
+                                            }
+                                            setShowAddressModal(true);
+                                        }}
                                         className="flex items-center gap-2 w-full p-4 rounded-xl border-2 border-dashed border-mocha-300 text-mocha-600 hover:border-mocha-400 hover:bg-mocha-50 transition-colors"
                                     >
-                                        <Plus className="w-5 h-5" />
-                                        Add New Address
+                                        {currentUser ? (
+                                            <><Plus className="w-5 h-5" /> Add New Address</>
+                                        ) : (
+                                            <><LogIn className="w-5 h-5" /> Login to Add Address</>
+                                        )}
                                     </button>
                                 </div>
                             </div>
@@ -730,6 +743,9 @@ export default function CheckoutPage() {
                     </div>
                 </div>
             )}
+
+            {/* Auth Modal */}
+            <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
         </>
     );
 }

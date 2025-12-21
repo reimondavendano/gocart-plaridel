@@ -86,6 +86,7 @@ export default function SellerOrdersPage() {
                     .select(`
                         id, created_at, status, total, subtotal, shipping_fee, discount,
                         payment_method, payment_status, tracking_number, rejection_reason, seller_approved_at,
+                        user_id,
                         user:users(id, email),
                         address:addresses(complete_address, label, city:cities(name), barangay:barangays(name))
                     `)
@@ -97,11 +98,13 @@ export default function SellerOrdersPage() {
                 // Fetch profiles to get user names
                 const formattedOrders = await Promise.all((data as any[]).map(async (order) => {
                     let name = 'Guest';
-                    if (order.user?.id) {
+                    // Use user_id directly from the order
+                    const userId = order.user_id || order.user?.id;
+                    if (userId) {
                         const { data: profile } = await supabase
                             .from('user_profiles')
                             .select('first_name, last_name, name')
-                            .eq('user_id', order.user.id)
+                            .eq('user_id', userId)
                             .single();
 
                         if (profile) {
@@ -114,7 +117,7 @@ export default function SellerOrdersPage() {
 
                     return {
                         ...order,
-                        user: { ...order.user, name },
+                        user: { ...order.user, name, email: order.user?.email || '' },
                         address: Array.isArray(order.address) ? order.address[0] : order.address,
                         items: [] // Fetched on demand
                     };
