@@ -65,10 +65,10 @@ export default function SellerProductsPage() {
             if (store) {
                 setStoreId(store.id);
 
-                // Fetch products with joined category slug
+                // Fetch products with joined category slug AND name
                 const { data: productsData } = await supabase
                     .from('products')
-                    .select('*, category:categories(slug)')
+                    .select('*, category:categories(slug, name)')
                     .eq('store_id', store.id)
                     .order('created_at', { ascending: false });
 
@@ -79,17 +79,22 @@ export default function SellerProductsPage() {
                         is_disabled_by_admin: p.is_disabled_by_admin ?? false,
                         disabled_by_admin_notes: p.disabled_by_admin_notes ?? null
                     })) as Product[]);
+
+                    // Derive categories from fetched products
+                    const uniqueCategoriesMap = new Map();
+                    productsData.forEach((p: any) => {
+                        if (p.category) {
+                            uniqueCategoriesMap.set(p.category.slug, p.category.name);
+                        }
+                    });
+
+                    const derivedCategories = Array.from(uniqueCategoriesMap.entries()).map(([slug, name]) => ({
+                        slug,
+                        name
+                    })).sort((a, b) => a.name.localeCompare(b.name));
+
+                    setCategories(derivedCategories);
                 }
-            }
-
-            // Fetch categories
-            const { data: categoriesData } = await supabase
-                .from('categories')
-                .select('slug, name')
-                .order('name');
-
-            if (categoriesData) {
-                setCategories(categoriesData);
             }
         } catch (error) {
             console.error('Error fetching products:', error);
@@ -342,8 +347,8 @@ export default function SellerProductsPage() {
                                             <button
                                                 onClick={(e) => { e.stopPropagation(); toggleDisabled(product); }}
                                                 className={`p-1.5 rounded-lg transition-colors ${product.is_disabled
-                                                        ? 'bg-orange-100 text-orange-600 hover:bg-orange-200'
-                                                        : 'bg-mocha-100 text-mocha-500 hover:bg-mocha-200'
+                                                    ? 'bg-orange-100 text-orange-600 hover:bg-orange-200'
+                                                    : 'bg-mocha-100 text-mocha-500 hover:bg-mocha-200'
                                                     }`}
                                                 title={product.is_disabled ? 'Enable Product' : 'Disable Product'}
                                             >

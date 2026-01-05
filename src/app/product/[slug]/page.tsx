@@ -179,6 +179,7 @@ export default function ProductPage() {
                     rating: productData.rating || 0,
                     reviewCount: productData.review_count || 0,
                     stock: productData.stock || 0,
+                    inStock: productData.in_stock ?? true,
                     isNew: productData.is_new || false,
                     aiGenerated: productData.ai_generated || false,
                     tags: productData.tags || []
@@ -512,19 +513,19 @@ export default function ProductPage() {
                                 <div className="flex items-center gap-2">
                                     <button
                                         onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                                        disabled={product.stock === 0}
-                                        className={`w-10 h-10 rounded-xl bg-mocha-100 flex items-center justify-center transition-colors ${product.stock === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-mocha-200'
+                                        disabled={product.stock === 0 || !product.inStock}
+                                        className={`w-10 h-10 rounded-xl bg-mocha-100 flex items-center justify-center transition-colors ${(product.stock === 0 || !product.inStock) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-mocha-200'
                                             }`}
                                     >
                                         <Minus className="w-4 h-4 text-mocha-700" />
                                     </button>
                                     <span className="w-16 text-center text-lg font-semibold text-mocha-900">
-                                        {product.stock === 0 ? '0' : quantity}
+                                        {(product.stock === 0 || !product.inStock) ? '0' : quantity}
                                     </span>
                                     <button
                                         onClick={() => setQuantity(Math.min(product.stock, quantity + 1))}
-                                        disabled={product.stock === 0 || quantity >= product.stock}
-                                        className={`w-10 h-10 rounded-xl bg-mocha-100 flex items-center justify-center transition-colors ${(product.stock === 0 || quantity >= product.stock)
+                                        disabled={product.stock === 0 || !product.inStock || quantity >= product.stock}
+                                        className={`w-10 h-10 rounded-xl bg-mocha-100 flex items-center justify-center transition-colors ${(product.stock === 0 || !product.inStock || quantity >= product.stock)
                                             ? 'opacity-50 cursor-not-allowed'
                                             : 'hover:bg-mocha-200'
                                             }`}
@@ -538,17 +539,17 @@ export default function ProductPage() {
                             <div className="flex gap-3">
                                 <button
                                     onClick={handleAddToCart}
-                                    disabled={product.stock === 0}
-                                    className={`flex-1 btn-primary flex items-center justify-center gap-2 !py-4 ${product.stock === 0 ? 'bg-gray-400 cursor-not-allowed hover:bg-gray-400 border-gray-400' : ''
+                                    disabled={product.stock === 0 || !product.inStock}
+                                    className={`flex-1 btn-primary flex items-center justify-center gap-2 !py-4 ${(product.stock === 0 || !product.inStock) ? 'bg-gray-400 cursor-not-allowed hover:bg-gray-400 border-gray-400' : ''
                                         }`}
                                 >
                                     <ShoppingCart className="w-5 h-5" />
-                                    {product.stock === 0 ? 'Out of Stock' : 'Add to Cart'}
+                                    {product.stock === 0 ? 'Out of Stock' : (!product.inStock ? 'Unavailable' : 'Add to Cart')}
                                 </button>
                                 <button
                                     onClick={handleBuyNow}
-                                    disabled={product.stock === 0}
-                                    className={`flex-1 btn-accent flex items-center justify-center gap-2 !py-4 ${product.stock === 0 ? 'bg-gray-300 text-gray-500 cursor-not-allowed hover:bg-gray-300' : ''
+                                    disabled={product.stock === 0 || !product.inStock}
+                                    className={`flex-1 btn-accent flex items-center justify-center gap-2 !py-4 ${(product.stock === 0 || !product.inStock) ? 'bg-gray-300 text-gray-500 cursor-not-allowed hover:bg-gray-300' : ''
                                         }`}
                                 >
                                     Buy Now

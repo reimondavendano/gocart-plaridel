@@ -65,7 +65,8 @@ export default function StorePage() {
                 const { data: productsData, error: productsError } = await supabase
                     .from('products')
                     .select('*, stores(name), category:categories(slug)')
-                    .eq('store_id', mappedStore.id);
+                    .eq('store_id', mappedStore.id)
+                    .eq('is_disabled_by_admin', false); // Only show products not disabled by admin
 
                 if (productsData) {
                     // Map snake_case to camelCase including joined store name

@@ -8,7 +8,7 @@ import CartDrawer from '@/components/cart/CartDrawer';
 import SearchModal from '@/components/search/SearchModal';
 import ToastContainer from '@/components/ui/Toast';
 import { useAppSelector } from '@/store';
-import { Package, Clock, CheckCircle, Truck, XCircle, ArrowRight, RefreshCcw, Search } from 'lucide-react';
+import { Package, Clock, CheckCircle, Truck, XCircle, ArrowRight, RefreshCcw, Search, MessageCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 
@@ -271,9 +271,18 @@ function OrdersContent() {
                                 </span>
                                 <div className="flex gap-3">
                                     {order.status === 'delivered' && (
-                                        <button className="px-4 py-2 text-sm font-medium text-white bg-mocha-600 rounded-lg hover:bg-mocha-700 transition-colors">
-                                            Rate
-                                        </button>
+                                        <>
+                                            <button className="px-4 py-2 text-sm font-medium text-white bg-mocha-600 rounded-lg hover:bg-mocha-700 transition-colors">
+                                                Rate
+                                            </button>
+                                            <Link
+                                                href={`/messages?store=${order.storeId}&order=${order.id}`}
+                                                className="px-4 py-2 text-sm font-medium text-mocha-600 bg-mocha-50 rounded-lg hover:bg-mocha-100 transition-colors border border-mocha-100 flex items-center gap-2"
+                                            >
+                                                <MessageCircle className="w-4 h-4" />
+                                                Contact Seller
+                                            </Link>
+                                        </>
                                     )}
                                     <button className="px-4 py-2 text-sm font-medium text-mocha-600 bg-mocha-50 rounded-lg hover:bg-mocha-100 transition-colors border border-mocha-100">
                                         Buy Again

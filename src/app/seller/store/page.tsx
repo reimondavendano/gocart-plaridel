@@ -10,6 +10,18 @@ import {
     CheckCircle, AlertCircle
 } from 'lucide-react';
 
+interface City {
+    id: string;
+    name: string;
+    province: string;
+}
+
+interface Barangay {
+    id: string;
+    city_id: string;
+    name: string;
+}
+
 interface StoreData {
     id: string;
     name: string;
@@ -45,11 +57,55 @@ export default function SellerStorePage() {
     const [bannerFile, setBannerFile] = useState<File | null>(null);
     const [bannerPreview, setBannerPreview] = useState<string | null>(null);
 
+    // Cities and Barangays
+    const [cities, setCities] = useState<City[]>([]);
+    const [barangays, setBarangays] = useState<Barangay[]>([]);
+    const [filteredBarangays, setFilteredBarangays] = useState<Barangay[]>([]);
+
     useEffect(() => {
         if (currentUser?.id) {
             fetchStore();
         }
+        fetchCitiesAndBarangays();
     }, [currentUser?.id]);
+
+    useEffect(() => {
+        // Filter barangays when city_id changes
+        if (store?.city_id) {
+            const filtered = barangays.filter(b => b.city_id === store.city_id);
+            setFilteredBarangays(filtered);
+        } else {
+            setFilteredBarangays([]);
+        }
+    }, [store?.city_id, barangays]);
+
+    const fetchCitiesAndBarangays = async () => {
+        try {
+            // Fetch cities
+            const { data: citiesData } = await supabase
+                .from('cities')
+                .select('id, name, province')
+                .eq('is_active', true)
+                .order('name');
+
+            if (citiesData) {
+                setCities(citiesData);
+            }
+
+            // Fetch all barangays
+            const { data: barangaysData } = await supabase
+                .from('barangays')
+                .select('id, city_id, name')
+                .eq('is_active', true)
+                .order('name');
+
+            if (barangaysData) {
+                setBarangays(barangaysData);
+            }
+        } catch (error) {
+            console.error('Error fetching cities and barangays:', error);
+        }
+    };
 
     const fetchStore = async () => {
         try {
@@ -103,6 +159,11 @@ export default function SellerStorePage() {
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!store) return;
+
+        if (!store.email || !store.phone) {
+            setMessage({ type: 'error', text: 'Contact Email and Phone Number are required.' });
+            return;
+        }
 
         setSaving(true);
         setMessage(null);
@@ -303,25 +364,27 @@ export default function SellerStorePage() {
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-mocha-700 mb-1">Contact Email</label>
+                            <label className="block text-sm font-medium text-mocha-700 mb-1">Contact Email <span className="text-red-500">*</span></label>
                             <div className="relative">
                                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-mocha-400" />
                                 <input
                                     type="email"
                                     value={store.email || ''}
                                     onChange={(e) => setStore({ ...store, email: e.target.value })}
+                                    required
                                     className="w-full pl-10 pr-4 py-3 bg-mocha-50 border border-mocha-200 rounded-xl focus:outline-none focus:border-mocha-400"
                                 />
                             </div>
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-mocha-700 mb-1">Phone Number</label>
+                            <label className="block text-sm font-medium text-mocha-700 mb-1">Phone Number <span className="text-red-500">*</span></label>
                             <div className="relative">
                                 <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-mocha-400" />
                                 <input
                                     type="text"
                                     value={store.phone || ''}
                                     onChange={(e) => setStore({ ...store, phone: e.target.value })}
+                                    required
                                     className="w-full pl-10 pr-4 py-3 bg-mocha-50 border border-mocha-200 rounded-xl focus:outline-none focus:border-mocha-400"
                                 />
                             </div>
@@ -365,22 +428,42 @@ export default function SellerStorePage() {
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-mocha-700 mb-1">Barangay ID</label>
-                            <input
-                                type="text"
-                                value={store.barangay_id || ''}
-                                onChange={(e) => setStore({ ...store, barangay_id: e.target.value })}
+                            <label className="block text-sm font-medium text-mocha-700 mb-1">City <span className="text-red-500">*</span></label>
+                            <select
+                                value={store.city_id || ''}
+                                onChange={(e) => {
+                                    setStore({ ...store, city_id: e.target.value, barangay_id: '' });
+                                }}
+                                required
                                 className="w-full px-4 py-3 bg-mocha-50 border border-mocha-200 rounded-xl focus:outline-none focus:border-mocha-400"
-                            />
+                            >
+                                <option value="">Select City</option>
+                                {cities.map((city) => (
+                                    <option key={city.id} value={city.id}>
+                                        {city.name}
+                                    </option>
+                                ))}
+                            </select>
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-mocha-700 mb-1">City ID</label>
-                            <input
-                                type="text"
-                                value={store.city_id || ''}
-                                onChange={(e) => setStore({ ...store, city_id: e.target.value })}
-                                className="w-full px-4 py-3 bg-mocha-50 border border-mocha-200 rounded-xl focus:outline-none focus:border-mocha-400"
-                            />
+                            <label className="block text-sm font-medium text-mocha-700 mb-1">Barangay <span className="text-red-500">*</span></label>
+                            <select
+                                value={store.barangay_id || ''}
+                                onChange={(e) => setStore({ ...store, barangay_id: e.target.value })}
+                                required
+                                disabled={!store.city_id}
+                                className="w-full px-4 py-3 bg-mocha-50 border border-mocha-200 rounded-xl focus:outline-none focus:border-mocha-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <option value="">Select Barangay</option>
+                                {filteredBarangays.map((barangay) => (
+                                    <option key={barangay.id} value={barangay.id}>
+                                        {barangay.name}
+                                    </option>
+                                ))}
+                            </select>
+                            {!store.city_id && (
+                                <p className="text-xs text-mocha-500 mt-1">Please select a city first</p>
+                            )}
                         </div>
                     </div>
 

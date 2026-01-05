@@ -8,7 +8,7 @@ import { uploadProductImage } from '@/lib/storage';
 import { checkImageContent } from '@/lib/moderation';
 import {
     ArrowLeft, Upload, X, Image as ImageIcon, DollarSign,
-    Package, Tag, FileText, Sparkles, Save, Loader2
+    Package, Tag, FileText, Sparkles, Save, Loader2, Store, AlertCircle
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -25,6 +25,8 @@ export default function NewProductPage() {
     const [categories, setCategories] = useState<Category[]>([]);
     const [storeId, setStoreId] = useState<string | null>(null);
     const [storeSlug, setStoreSlug] = useState<string | null>(null);
+    const [storeComplete, setStoreComplete] = useState<boolean>(false);
+    const [storeValidationMessage, setStoreValidationMessage] = useState<string | null>(null);
 
     // Form state
     const [name, setName] = useState('');
@@ -49,13 +51,38 @@ export default function NewProductPage() {
             if (currentUser?.id) {
                 const { data: store } = await supabase
                     .from('stores')
-                    .select('id, slug')
+                    .select('id, slug, address_id, status')
                     .eq('seller_id', currentUser.id)
                     .single();
 
                 if (store) {
                     setStoreId(store.id);
                     setStoreSlug(store.slug);
+
+                    // Check if store has complete details
+                    if (store.address_id && store.status === 'approved') {
+                        // Fetch address details to validate
+                        const { data: address } = await supabase
+                            .from('addresses')
+                            .select('complete_address, city_id, barangay_id')
+                            .eq('id', store.address_id)
+                            .single();
+
+                        if (address && address.complete_address && address.city_id && address.barangay_id) {
+                            setStoreComplete(true);
+                        } else {
+                            setStoreComplete(false);
+                            setStoreValidationMessage('Please complete your store address details (Street Address, City ID, and Barangay ID) before adding products.');
+                        }
+                    } else if (store.status !== 'approved') {
+                        setStoreComplete(false);
+                        setStoreValidationMessage('Your store must be approved by admin before you can add products.');
+                    } else {
+                        setStoreComplete(false);
+                        setStoreValidationMessage('Please complete your store details before adding products.');
+                    }
+                } else {
+                    setStoreValidationMessage('You need to create a store first before adding products.');
                 }
             }
 
@@ -107,6 +134,11 @@ export default function NewProductPage() {
         e.preventDefault();
         if (!storeId || !storeSlug) {
             alert('Store not found. Please create a store first.');
+            return;
+        }
+
+        if (parseInt(stock) < 1) {
+            alert('Stock quantity must be at least 1.');
             return;
         }
 
@@ -186,6 +218,28 @@ export default function NewProductPage() {
                     <p className="text-mocha-500">Fill in the details to add a new product to your store</p>
                 </div>
             </div>
+
+            {/* Store Validation Warning */}
+            {!storeComplete && storeValidationMessage && (
+                <div className="bg-yellow-50 border-2 border-yellow-200 rounded-2xl p-6 mb-6">
+                    <div className="flex items-start gap-3">
+                        <div className="p-2 bg-yellow-100 rounded-lg flex-shrink-0">
+                            <AlertCircle className="w-6 h-6 text-yellow-600" />
+                        </div>
+                        <div className="flex-1">
+                            <h3 className="text-lg font-semibold text-yellow-900 mb-2">Store Details Required</h3>
+                            <p className="text-yellow-800 mb-3">{storeValidationMessage}</p>
+                            <Link
+                                href="/seller/store"
+                                className="inline-flex items-center gap-2 px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-xl font-medium transition-colors"
+                            >
+                                <Store className="w-4 h-4" />
+                                Complete Store Details
+                            </Link>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <form onSubmit={handleSubmit} className="space-y-6">
                 {/* Basic Info */}
@@ -270,8 +324,8 @@ export default function NewProductPage() {
                                 type="number"
                                 value={stock}
                                 onChange={(e) => setStock(e.target.value)}
-                                placeholder="0"
-                                min="0"
+                                placeholder="1"
+                                min="1"
                                 className="w-full px-4 py-3 bg-mocha-50 border border-mocha-200 rounded-xl text-mocha-900 placeholder:text-mocha-400 focus:outline-none focus:border-mocha-400"
                                 required
                             />
@@ -362,7 +416,7 @@ export default function NewProductPage() {
                     </Link>
                     <button
                         type="submit"
-                        disabled={loading || !name || !price}
+                        disabled={loading || !name || !price || !storeComplete}
                         className="px-6 py-3 rounded-xl bg-mocha-500 hover:bg-mocha-600 text-white font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                     >
                         {loading ? (

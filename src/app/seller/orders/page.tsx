@@ -61,26 +61,41 @@ export default function SellerOrdersPage() {
     const [showRejectModal, setShowRejectModal] = useState(false);
 
     const [hasStore, setHasStore] = useState<boolean | null>(null);
+    const [storeId, setStoreId] = useState<string | null>(null);
 
     // ... (rest of local state)
 
     useEffect(() => {
         if (currentUser?.id) {
-            fetchOrders();
+            const getStore = async () => {
+                try {
+                    const { data: store } = await supabase
+                        .from('stores')
+                        .select('id')
+                        .eq('seller_id', currentUser.id)
+                        .single();
+
+                    if (store) {
+                        setStoreId(store.id);
+                        setHasStore(true);
+                    } else {
+                        setHasStore(false);
+                        setLoading(false);
+                    }
+                } catch (err) {
+                    console.error('Error fetching store:', err);
+                    setLoading(false);
+                }
+            };
+            getStore();
         }
     }, [currentUser?.id]);
 
-    const fetchOrders = async () => {
-        try {
-            // Get seller's store first
-            const { data: store } = await supabase
-                .from('stores')
-                .select('id')
-                .eq('seller_id', currentUser?.id)
-                .single();
+    useEffect(() => {
+        if (!storeId) return;
 
-            if (store) {
-                setHasStore(true);
+        const fetchStoreOrders = async () => {
+            try {
                 const { data, error } = await supabase
                     .from('orders')
                     .select(`
@@ -90,7 +105,7 @@ export default function SellerOrdersPage() {
                         user:users(id, email),
                         address:addresses(complete_address, label, city:cities(name), barangay:barangays(name))
                     `)
-                    .eq('store_id', store.id)
+                    .eq('store_id', storeId)
                     .order('created_at', { ascending: false });
 
                 if (error) throw error;
@@ -124,16 +139,30 @@ export default function SellerOrdersPage() {
                 }));
 
                 setOrders(formattedOrders);
-            } else {
-                setHasStore(false);
-                console.warn('No store found for user:', currentUser?.id);
+            } catch (error) {
+                console.error('Error fetching orders:', error);
+            } finally {
+                setLoading(false);
             }
-        } catch (error) {
-            console.error('Error fetching orders:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
+        };
+
+        fetchStoreOrders();
+
+        const channel = supabase
+            .channel(`seller_orders_${storeId}`)
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'orders', filter: `store_id=eq.${storeId}` },
+                () => {
+                    fetchStoreOrders();
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [storeId]);
 
     const openOrderDetail = async (order: Order) => {
         // Fetch order items

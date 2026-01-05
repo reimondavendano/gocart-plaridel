@@ -234,20 +234,27 @@ export default function Header() {
 
                             {isAuthenticated ? (
                                 <div className="relative">
-                                    <button
-                                        onClick={() => setUserMenuOpen(!userMenuOpen)}
-                                        className="flex items-center gap-2 p-1 pr-3 rounded-xl hover:bg-mocha-100 transition-colors"
-                                    >
-                                        <img
-                                            src={currentUser?.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=fallback'}
-                                            alt={currentUser?.name}
-                                            className="w-8 h-8 rounded-lg object-cover"
-                                        />
-                                        <span className="hidden md:block text-sm font-medium text-mocha-800 max-w-[100px] truncate">
-                                            {currentUser?.name}
-                                        </span>
-                                        <ChevronDown className={`w-4 h-4 text-mocha-500 transition-transform ${userMenuOpen ? 'rotate-180' : ''}`} />
-                                    </button>
+                                    <div className="flex items-center gap-0 rounded-xl hover:bg-mocha-100 transition-colors">
+                                        <Link
+                                            href="/profile"
+                                            className="flex items-center gap-2 p-1 pr-2"
+                                        >
+                                            <img
+                                                src={currentUser?.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=fallback'}
+                                                alt={currentUser?.name}
+                                                className="w-8 h-8 rounded-lg object-cover"
+                                            />
+                                            <span className="hidden md:block text-sm font-medium text-mocha-800 max-w-[100px] truncate">
+                                                {currentUser?.name}
+                                            </span>
+                                        </Link>
+                                        <button
+                                            onClick={() => setUserMenuOpen(!userMenuOpen)}
+                                            className="p-1 px-2"
+                                        >
+                                            <ChevronDown className={`w-4 h-4 text-mocha-500 transition-transform ${userMenuOpen ? 'rotate-180' : ''}`} />
+                                        </button>
+                                    </div>
 
                                     {userMenuOpen && (
                                         <>

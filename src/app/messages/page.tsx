@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useRef, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { useAppSelector } from '@/store';
 import Header from '@/components/layout/Header';
@@ -35,7 +35,7 @@ interface Message {
     is_read: boolean;
 }
 
-export default function MessagesPage() {
+function MessagesContent() {
     const router = useRouter();
     const { currentUser, isAuthenticated } = useAppSelector((state) => state.user);
     const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -49,6 +49,34 @@ export default function MessagesPage() {
     const [sending, setSending] = useState(false);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const searchParams = useSearchParams();
+
+    useEffect(() => {
+        if (!loading && currentUser) {
+            const storeId = searchParams.get('store');
+            const orderId = searchParams.get('order');
+
+            if (storeId && !selectedConversation) {
+                const existing = conversations.find(c => c.store?.id === storeId);
+                if (existing) {
+                    setSelectedConversation(existing);
+                } else {
+                    supabase.from('stores').select('id, name, logo').eq('id', storeId).single().then(({ data }) => {
+                        if (data) {
+                            setSelectedConversation({
+                                id: 'new',
+                                subject: orderId ? `Order #${orderId.slice(0, 8)} Query` : `Inquiry`,
+                                status: 'open',
+                                updated_at: new Date().toISOString(),
+                                store: data,
+                                last_message: null
+                            });
+                        }
+                    });
+                }
+            }
+        }
+    }, [searchParams, loading, currentUser, conversations, selectedConversation]);
 
     // Check auth session on mount
     useEffect(() => {
@@ -193,11 +221,31 @@ export default function MessagesPage() {
         if (!newMessage.trim() || !selectedConversation || !currentUser) return;
 
         setSending(true);
+        setSending(true);
         try {
+            let conversationId = selectedConversation.id;
+
+            if (conversationId === 'new') {
+                const { data: newConv, error: newConvError } = await supabase
+                    .from('conversations')
+                    .insert({
+                        user_id: currentUser.id,
+                        store_id: selectedConversation.store?.id,
+                        subject: selectedConversation.subject,
+                        status: 'open'
+                    })
+                    .select()
+                    .single();
+
+                if (newConvError) throw newConvError;
+                conversationId = newConv.id;
+                setSelectedConversation(prev => prev ? ({ ...prev, id: newConv.id }) : null);
+            }
+
             const { error } = await supabase
                 .from('messages')
                 .insert({
-                    conversation_id: selectedConversation.id,
+                    conversation_id: conversationId,
                     sender_id: currentUser.id,
                     sender_role: 'user',
                     content: newMessage.trim()
@@ -208,10 +256,13 @@ export default function MessagesPage() {
             setNewMessage('');
 
             // Update conversation updated_at
-            await supabase
-                .from('conversations')
-                .update({ updated_at: new Date().toISOString() })
-                .eq('id', selectedConversation.id);
+            // Update conversation updated_at
+            if (conversationId !== 'new') {
+                await supabase
+                    .from('conversations')
+                    .update({ updated_at: new Date().toISOString() })
+                    .eq('id', conversationId);
+            }
 
         } catch (err) {
             console.error('Error sending message:', err);
@@ -394,5 +445,21 @@ export default function MessagesPage() {
             </main>
             <Footer />
         </>
+    );
+}
+
+export default function MessagesPage() {
+    return (
+        <Suspense fallback={
+            <>
+                <Header />
+                <div className="min-h-screen pt-24 pb-12 flex items-center justify-center">
+                    <div className="w-8 h-8 border-4 border-mocha-200 border-t-mocha-600 rounded-full animate-spin" />
+                </div>
+                <Footer />
+            </>
+        }>
+            <MessagesContent />
+        </Suspense>
     );
 }

@@ -101,7 +101,10 @@ export default function AdminMessagesPage() {
                 .from('conversations')
                 .select(`
                     id, subject, status, updated_at,
-                    user:users(id, name, email, role)
+                    user:users!user_id(
+                        id, email, role,
+                        user_profiles(name)
+                    )
                 `)
                 .order('updated_at', { ascending: false });
 
@@ -111,7 +114,7 @@ export default function AdminMessagesPage() {
             const formatted: Conversation[] = (data || []).map((c: any) => ({
                 id: c.id,
                 sender_id: c.user?.id,
-                sender_name: c.user?.name || 'Unknown User',
+                sender_name: c.user?.user_profiles?.[0]?.name || c.user?.email || 'Unknown User',
                 sender_email: c.user?.email,
                 sender_role: c.user?.role || 'user',
                 subject: c.subject,

@@ -11,7 +11,8 @@
 !.yarn/versions
 
 # database
-/database/*
+src/database/*
+src/database
 
 # testing
 /coverage
