@@ -23,6 +23,7 @@ export default function StoresSection() {
                     .from('stores')
                     .select('*')
                     .eq('status', 'approved')
+                    .eq('is_subscription_active', true)
                     .limit(6);
 
                 if (error) {
@@ -45,6 +46,8 @@ export default function StoresSection() {
                         banner: item.banner,
                         addressId: item.address_id,
                         status: item.status,
+                        subscriptionEndsAt: item.subscription_ends_at,
+                        isSubscriptionActive: item.is_subscription_active,
                         rating: item.rating,
                         totalReviews: item.total_reviews,
                         totalProducts: item.total_products,

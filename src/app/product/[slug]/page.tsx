@@ -208,8 +208,16 @@ export default function ProductPage() {
                             createdAt: storeData.created_at,
                             updatedAt: storeData.updated_at || storeData.created_at,
                             sellerId: storeData.seller_id,
-                            status: storeData.status as Store['status']
+                            status: storeData.status as Store['status'],
+                            isSubscriptionActive: storeData.is_subscription_active,
+                            subscriptionEndsAt: storeData.subscription_ends_at
                         });
+
+                        // If store subscription is not active, hide the product
+                        if (!storeData.is_subscription_active) {
+                            setProduct(null);
+                            return;
+                        }
                     }
                 }
 

@@ -54,6 +54,9 @@ export interface Store {
     verificationNotes?: string;
     verifiedAt?: string;
     verifiedBy?: string;
+    // Subscription
+    subscriptionEndsAt?: string;
+    isSubscriptionActive: boolean;
     // Stats
     rating: number;
     totalReviews?: number;

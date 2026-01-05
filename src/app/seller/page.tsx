@@ -18,6 +18,8 @@ interface StoreData {
     total_reviews: number;
     total_products: number;
     total_sales: number;
+    is_subscription_active: boolean;
+    subscription_ends_at: string | null;
 }
 
 interface DashboardStats {
@@ -164,37 +166,68 @@ export default function SellerDashboard() {
                 </Link>
             </div>
 
+
+
+            {/* Subscription Inactive Banner */}
+            {
+                store && store.status === 'approved' && !store.is_subscription_active && (
+                    <div className="rounded-2xl p-4 flex items-center gap-4 bg-red-50 border border-red-200">
+                        <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-red-100">
+                            <AlertTriangle className="w-6 h-6 text-red-600" />
+                        </div>
+                        <div className="flex-1">
+                            <h3 className="font-medium text-red-800">
+                                Subscription Inactive
+                            </h3>
+                            <p className="text-sm text-red-600">
+                                Your store is currently disabled because your subscription is inactive.
+                                {store.subscription_ends_at ? `It expired on ${formatDate(store.subscription_ends_at)}.` : 'Please subscribe to a plan.'}
+                                To make your products visible again, please renew your subscription.
+                            </p>
+                        </div>
+                        <Link
+                            href="/seller/settings"
+                            className="px-4 py-2 rounded-xl text-sm font-medium bg-red-200 text-red-800 hover:bg-red-300 transition-colors"
+                        >
+                            Renew Now
+                        </Link>
+                    </div>
+                )
+            }
+
             {/* Store Status Banner */}
-            {store && store.status !== 'approved' && (
-                <div className={`rounded-2xl p-4 flex items-center gap-4 ${store.status === 'pending'
+            {
+                store && store.status !== 'approved' && (
+                    <div className={`rounded-2xl p-4 flex items-center gap-4 ${store.status === 'pending'
                         ? 'bg-yellow-50 border border-yellow-200'
                         : 'bg-red-50 border border-red-200'
-                    }`}>
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${store.status === 'pending' ? 'bg-yellow-100' : 'bg-red-100'
                         }`}>
-                        <AlertTriangle className={`w-6 h-6 ${store.status === 'pending' ? 'text-yellow-600' : 'text-red-600'}`} />
-                    </div>
-                    <div className="flex-1">
-                        <h3 className={`font-medium ${store.status === 'pending' ? 'text-yellow-800' : 'text-red-800'}`}>
-                            {store.status === 'pending' ? 'Store Pending Verification' : 'Store Rejected'}
-                        </h3>
-                        <p className={`text-sm ${store.status === 'pending' ? 'text-yellow-600' : 'text-red-600'}`}>
-                            {store.status === 'pending'
-                                ? 'Your store is currently under review. You can still add products while we verify your information.'
-                                : 'Your store application was rejected. Please contact support for more information.'}
-                        </p>
-                    </div>
-                    <Link
-                        href="/seller/store"
-                        className={`px-4 py-2 rounded-xl text-sm font-medium ${store.status === 'pending'
+                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${store.status === 'pending' ? 'bg-yellow-100' : 'bg-red-100'
+                            }`}>
+                            <AlertTriangle className={`w-6 h-6 ${store.status === 'pending' ? 'text-yellow-600' : 'text-red-600'}`} />
+                        </div>
+                        <div className="flex-1">
+                            <h3 className={`font-medium ${store.status === 'pending' ? 'text-yellow-800' : 'text-red-800'}`}>
+                                {store.status === 'pending' ? 'Store Pending Verification' : 'Store Rejected'}
+                            </h3>
+                            <p className={`text-sm ${store.status === 'pending' ? 'text-yellow-600' : 'text-red-600'}`}>
+                                {store.status === 'pending'
+                                    ? 'Your store is currently under review. You can still add products while we verify your information.'
+                                    : 'Your store application was rejected. Please contact support for more information.'}
+                            </p>
+                        </div>
+                        <Link
+                            href="/seller/store"
+                            className={`px-4 py-2 rounded-xl text-sm font-medium ${store.status === 'pending'
                                 ? 'bg-yellow-200 text-yellow-800 hover:bg-yellow-300'
                                 : 'bg-red-200 text-red-800 hover:bg-red-300'
-                            } transition-colors`}
-                    >
-                        View Details
-                    </Link>
-                </div>
-            )}
+                                } transition-colors`}
+                        >
+                            View Details
+                        </Link>
+                    </div>
+                )
+            }
 
             {/* Stats Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -330,6 +363,6 @@ export default function SellerDashboard() {
                     <p className="text-sm text-mocha-500">View sales insights</p>
                 </Link>
             </div>
-        </div>
+        </div >
     );
 }

@@ -44,13 +44,15 @@ export const fetchProducts = createAsyncThunk('product/fetchProducts', async () 
         .from('products')
         .select(`
             *,
-            stores (
-                name
+            stores!inner (
+                name,
+                is_subscription_active
             ),
             category:categories(slug)
         `)
         .eq('is_disabled', false)
-        .eq('is_disabled_by_admin', false);
+        .eq('is_disabled_by_admin', false)
+        .eq('stores.is_subscription_active', true);
 
     if (error) {
         throw new Error(error.message);
