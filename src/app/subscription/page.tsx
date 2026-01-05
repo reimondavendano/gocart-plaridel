@@ -12,11 +12,13 @@ import { useAppSelector } from '@/store';
 import { supabase } from '@/lib/supabase';
 import { Plan } from '@/types';
 import { Check, Store, Zap, Shield, TrendingUp, Loader } from 'lucide-react';
+import SubscriptionRenewalModal from '@/components/seller/SubscriptionRenewalModal';
 
 export default function SubscriptionPage() {
-    const { isAuthenticated } = useAppSelector((state) => state.user);
+    const { isAuthenticated, currentUser } = useAppSelector((state) => state.user);
     const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
     const [isSellerModalOpen, setIsSellerModalOpen] = useState(false);
+    const [isRenewalModalOpen, setIsRenewalModalOpen] = useState(false);
     const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
     const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
     const [plans, setPlans] = useState<Plan[]>([]);
@@ -55,13 +57,37 @@ export default function SubscriptionPage() {
         fetchPlans();
     }, []);
 
-    const handleSubscribe = (planName: string) => {
+    const handleSubscribe = async (planName: string) => {
         if (!isAuthenticated) {
             setIsAuthModalOpen(true);
             return;
         }
-        setSelectedPlan(planName);
-        setIsSellerModalOpen(true);
+
+        // Check if user has an existing store (approved or pending)
+        // If they have an approved store, it's a RENEWAL/UPGRADE
+        // If they have no store, it's a NEW REGISTRATION
+
+        try {
+            const { data: stores } = await supabase
+                .from('stores')
+                .select('id, status')
+                .eq('seller_id', currentUser?.id)
+                .in('status', ['approved', 'pending'])
+                .limit(1);
+
+            setSelectedPlan(planName);
+
+            if (stores && stores.length > 0) {
+                // Determine if renewal or upgrade (logic is similar, both just request a plan change/extension)
+                setIsRenewalModalOpen(true);
+            } else {
+                setIsSellerModalOpen(true);
+            }
+        } catch (error) {
+            console.error("Error checking store status:", error);
+            // Fallback to registration if error? Safer to show nothing or alert
+            alert("Something went wrong. Please try again.");
+        }
     };
 
     // Helper to get icon based on name
@@ -210,6 +236,12 @@ export default function SubscriptionPage() {
                 isOpen={isSellerModalOpen}
                 onClose={() => setIsSellerModalOpen(false)}
                 initialPlan={selectedPlan}
+            />
+            <SubscriptionRenewalModal
+                isOpen={isRenewalModalOpen}
+                onClose={() => setIsRenewalModalOpen(false)}
+                planName={selectedPlan}
+                planPrice={plans.find(p => p.name === selectedPlan)?.price || 0}
             />
             <AuthModal
                 isOpen={isAuthModalOpen}

@@ -186,7 +186,7 @@ export default function SellerDashboard() {
                             </p>
                         </div>
                         <Link
-                            href="/seller/settings"
+                            href="/subscription"
                             className="px-4 py-2 rounded-xl text-sm font-medium bg-red-200 text-red-800 hover:bg-red-300 transition-colors"
                         >
                             Renew Now

@@ -266,7 +266,7 @@ export async function uploadProductImage(
 export async function uploadVerificationDoc(
     file: File | string,
     storeSlug: string,
-    docType: 'id_front' | 'id_back' | 'business_permit' | 'selfie'
+    docType: 'id_front' | 'id_back' | 'business_permit' | 'selfie' | 'payment_proof'
 ): Promise<string | null> {
     const { url, error } = await uploadToStorage(file, {
         storeSlug,

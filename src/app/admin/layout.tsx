@@ -20,6 +20,7 @@ const sidebarLinks = [
     { href: '/admin/deals', label: 'Deals', icon: Zap },
     { href: '/admin/locations', label: 'Locations', icon: MapPin },
     { href: '/admin/plans', label: 'Plans', icon: CreditCard },
+    { href: '/admin/subscriptions', label: 'Subscriptions', icon: FileCheck },
     { href: '/admin/coupons', label: 'Coupons', icon: Ticket },
     { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
     { href: '/admin/messages', label: 'Messages', icon: MessageSquare },
