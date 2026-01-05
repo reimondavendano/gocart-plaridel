@@ -41,6 +41,8 @@ export default function StoresPage() {
                         banner: item.banner || '/placeholder-banner.jpg',
                         addressId: item.address_id,
                         status: item.status,
+                        isSubscriptionActive: item.is_subscription_active,
+                        subscriptionEndsAt: item.subscription_ends_at,
                         rating: item.rating,
                         totalReviews: item.total_reviews,
                         totalProducts: item.total_products,

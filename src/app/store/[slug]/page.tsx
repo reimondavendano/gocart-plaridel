@@ -52,6 +52,8 @@ export default function StorePage() {
                     banner: storeData.banner || '/placeholder-banner.jpg',
                     addressId: storeData.address_id,
                     status: storeData.status,
+                    isSubscriptionActive: storeData.is_subscription_active,
+                    subscriptionEndsAt: storeData.subscription_ends_at,
                     rating: storeData.rating,
                     totalReviews: storeData.total_reviews,
                     totalProducts: storeData.total_products,
@@ -59,6 +61,16 @@ export default function StorePage() {
                     createdAt: storeData.created_at,
                     updatedAt: storeData.updated_at,
                 };
+
+                // Check Subscription Status
+                if (!mappedStore.isSubscriptionActive) {
+                    // You might want to unset the store or set a special state
+                    // For now, let's allow setting it to null or handling it in UI
+                    setLoading(false);
+                    setStore(null); // Or set a specific error state if you want a custom message
+                    return;
+                }
+
                 setStore(mappedStore);
 
                 // Fetch Products for Store
