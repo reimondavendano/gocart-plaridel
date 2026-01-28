@@ -184,6 +184,14 @@ export default function ProductPage() {
                     aiGenerated: productData.ai_generated || false,
                     tags: productData.tags || []
                 };
+
+                // Check if product is disabled by admin
+                if (productData.is_disabled_by_admin) {
+                    setProduct(null);
+                    setLoading(false);
+                    return;
+                }
+
                 setProduct(mappedProduct);
 
                 // Fetch Store

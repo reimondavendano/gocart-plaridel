@@ -21,7 +21,7 @@ export default function CheckoutPage() {
     const dispatch = useDispatch();
     const items = useSelector(selectCartItems);
     const subtotal = useSelector(selectCartTotal);
-    const { currentUser } = useSelector((state: RootState) => state.user);
+    const { currentUser, isAuthenticated } = useSelector((state: RootState) => state.user);
     const { discount, shipping } = useSelector((state: RootState) => state.cart);
 
     const [addresses, setAddresses] = useState<Address[]>([]);
@@ -193,7 +193,13 @@ export default function CheckoutPage() {
     };
 
     const handlePlaceOrder = async () => {
-        if (!currentUser) {
+        // Strict authentication check
+        if (!isAuthenticated || !currentUser) {
+            dispatch(addToast({ 
+                type: 'error', 
+                title: 'Login Required', 
+                message: 'You must be logged in to place an order' 
+            }));
             setIsAuthModalOpen(true);
             return;
         }
@@ -369,6 +375,42 @@ export default function CheckoutPage() {
                     </div>
                 </main>
                 <Footer />
+            </>
+        );
+    }
+
+    // Show login requirement if not authenticated
+    if (!isAuthenticated) {
+        return (
+            <>
+                <Header />
+                <main className="pt-24 pb-16 min-h-screen bg-cloud-200">
+                    <div className="container-custom max-w-2xl">
+                        <div className="glass-card rounded-2xl p-8 text-center">
+                            <div className="w-16 h-16 rounded-full bg-mocha-100 flex items-center justify-center mx-auto mb-4">
+                                <LogIn className="w-8 h-8 text-mocha-600" />
+                            </div>
+                            <h1 className="text-2xl font-bold text-mocha-900 mb-2">Login Required</h1>
+                            <p className="text-mocha-600 mb-6">
+                                You need to be logged in to proceed with checkout. Please login or create an account to continue.
+                            </p>
+                            <div className="flex gap-4 justify-center">
+                                <button
+                                    onClick={() => setIsAuthModalOpen(true)}
+                                    className="btn-primary"
+                                >
+                                    Login / Sign Up
+                                </button>
+                                <Link href="/products" className="btn-accent">
+                                    Continue Shopping
+                                </Link>
+                            </div>
+                        </div>
+                    </div>
+                </main>
+                <Footer />
+                <ToastContainer />
+                <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
             </>
         );
     }

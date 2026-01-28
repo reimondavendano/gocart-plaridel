@@ -113,9 +113,12 @@ export default function SellerOrdersPage() {
                 // Fetch profiles to get user names
                 const formattedOrders = await Promise.all((data as any[]).map(async (order) => {
                     let name = 'Guest';
+                    let email = '';
+                    
                     // Use user_id directly from the order
                     const userId = order.user_id || order.user?.id;
                     if (userId) {
+                        // First try to get from user_profiles
                         const { data: profile } = await supabase
                             .from('user_profiles')
                             .select('first_name, last_name, name')
@@ -123,16 +126,36 @@ export default function SellerOrdersPage() {
                             .single();
 
                         if (profile) {
+                            // Priority: name field, then first_name + last_name, then email
                             name = profile.name ||
                                 ((profile.first_name || profile.last_name)
                                     ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim()
-                                    : 'Guest');
+                                    : null);
+                        }
+
+                        // If still no name, try to get email from users table
+                        if (!name || name === 'Guest') {
+                            const { data: userData } = await supabase
+                                .from('users')
+                                .select('email')
+                                .eq('id', userId)
+                                .single();
+                            
+                            if (userData?.email) {
+                                email = userData.email;
+                                // Use email username as name if no name found
+                                name = userData.email.split('@')[0];
+                            }
                         }
                     }
 
                     return {
                         ...order,
-                        user: { ...order.user, name, email: order.user?.email || '' },
+                        user: { 
+                            ...order.user, 
+                            name: name || 'Guest', 
+                            email: email || order.user?.email || '' 
+                        },
                         address: Array.isArray(order.address) ? order.address[0] : order.address,
                         items: [] // Fetched on demand
                     };

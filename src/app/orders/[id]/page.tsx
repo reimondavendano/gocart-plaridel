@@ -81,6 +81,41 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     useEffect(() => {
         if (currentUser && id) {
             fetchOrder();
+
+            // Set up real-time subscription for order updates
+            const orderChannel = supabase
+                .channel(`order_${id}`)
+                .on(
+                    'postgres_changes',
+                    {
+                        event: 'UPDATE',
+                        schema: 'public',
+                        table: 'orders',
+                        filter: `id=eq.${id}`
+                    },
+                    () => {
+                        // Refetch order when it's updated
+                        fetchOrder();
+                    }
+                )
+                .on(
+                    'postgres_changes',
+                    {
+                        event: 'INSERT',
+                        schema: 'public',
+                        table: 'order_status_history',
+                        filter: `order_id=eq.${id}`
+                    },
+                    () => {
+                        // Refetch order when status history is added
+                        fetchOrder();
+                    }
+                )
+                .subscribe();
+
+            return () => {
+                supabase.removeChannel(orderChannel);
+            };
         }
     }, [currentUser, id]);
 
@@ -589,13 +624,24 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                                         {actionLoading ? 'Processing...' : 'Cancel Order'}
                                     </button>
                                 )}
+                                {/* Contact Seller - Always Available */}
                                 <Link
-                                    href={`/messages?store=${order.store?.id}`}
+                                    href={`/messages?store=${order.store?.id}&order=${order.id}`}
                                     className="w-full px-4 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors font-medium flex items-center justify-center gap-2"
                                 >
                                     <MessageCircle className="w-4 h-4" />
                                     Contact Seller
                                 </Link>
+                                {/* Contact Seller About Delivered Order */}
+                                {(order.status === 'delivered' || order.status === 'completed') && (
+                                    <Link
+                                        href={`/messages?store=${order.store?.id}&order=${order.id}&subject=delivered`}
+                                        className="w-full px-4 py-2 text-mocha-600 bg-mocha-50 rounded-lg hover:bg-mocha-100 transition-colors font-medium flex items-center justify-center gap-2 border border-mocha-200"
+                                    >
+                                        <MessageCircle className="w-4 h-4" />
+                                        Need Help with This Order?
+                                    </Link>
+                                )}
                             </div>
                         </div>
                     </div>

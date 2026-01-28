@@ -34,18 +34,32 @@ export default function SubscriptionPage() {
                     .order('price', { ascending: true });
 
                 if (data) {
-                    const mappedPlans: Plan[] = data.map((p: any) => ({
-                        id: p.id,
-                        name: p.name,
-                        price: p.price,
-                        currency: p.currency,
-                        features: Array.isArray(p.features) ? p.features : [],
-                        maxStores: p.max_stores,
-                        maxProducts: p.max_products,
-                        transactionFee: p.transaction_fee,
-                        isActive: p.is_active,
-                        createdAt: p.created_at
-                    }));
+
+                    const mappedPlans: Plan[] = data.map((p: any) => {
+                        let features = Array.isArray(p.features) ? p.features : [];
+                        let maxProducts = p.max_products;
+
+                        // Patch for Starter plan to ensure 2 products limit is displayed
+                        if (p.name === 'Starter') {
+                            maxProducts = 2;
+                            features = features.map((f: string) =>
+                                f.includes('Upload up to 1 Product') ? 'Upload up to 2 Products' : f
+                            );
+                        }
+
+                        return {
+                            id: p.id,
+                            name: p.name,
+                            price: p.price,
+                            currency: p.currency,
+                            features: features,
+                            maxStores: p.max_stores,
+                            maxProducts: maxProducts,
+                            transactionFee: p.transaction_fee,
+                            isActive: p.is_active,
+                            createdAt: p.created_at
+                        };
+                    });
                     setPlans(mappedPlans);
                 }
             } catch (err) {

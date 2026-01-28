@@ -13,7 +13,7 @@ export default function SubscriptionSection() {
         {
             name: 'Starter',
             price: 0,
-            features: ['1 Store', '1 Product', 'Basic Analytics'],
+            features: ['1 Store', '2 Products', 'Basic Analytics'],
             icon: Store,
             color: 'bg-gray-100',
             textColor: 'text-gray-900',

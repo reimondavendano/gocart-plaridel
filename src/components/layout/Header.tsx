@@ -12,6 +12,7 @@ import { setCartOpen, setSearchOpen, setMobileMenuOpen } from '@/store/slices/ui
 import { setUser, logout } from '@/store/slices/userSlice';
 import AuthModal from '@/components/auth/AuthModal';
 import SellerRegistrationModal from '@/components/seller/SellerRegistrationModal';
+import NotificationDropdown from '@/components/layout/NotificationDropdown';
 import { supabase } from '@/lib/supabase';
 import { User as UserType } from '@/types';
 
@@ -225,12 +226,7 @@ export default function Header() {
                                 )}
                             </button>
 
-                            {isAuthenticated && (
-                                <button className="p-2 rounded-xl hover:bg-mocha-100 transition-colors text-mocha-700 hidden md:flex relative">
-                                    <Bell className="w-5 h-5" />
-                                    <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500" />
-                                </button>
-                            )}
+                            {isAuthenticated && <NotificationDropdown />}
 
                             {isAuthenticated ? (
                                 <div className="relative">
